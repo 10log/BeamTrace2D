@@ -104,11 +104,21 @@ class Beam {
 class BeamNode {
   children: BeamNode[] = [];
 
+  // Optimization fields for fail line caching
+  failLine?: import('./geometry').Line2D;
+  failLineType?: import('./geometry').FailLineType;
+
   constructor(
     public id: number,
     public parent: BeamNode | null,
     public vs: Point
   ) {}
+
+  /** Clear cached fail line (called when listener escapes the fail region) */
+  clearFailLine(): void {
+    this.failLine = undefined;
+    this.failLineType = undefined;
+  }
 }
 
 /** BSP tree for accelerated ray-wall intersection tests */
@@ -640,6 +650,19 @@ export class Solver {
     return int;
   }
 }
+
+// Re-export optimization module
+export {
+  OptimizedSolver,
+  type Line2D,
+  type FailLineType,
+  type SkipCircle,
+  type Bucket,
+  type PerformanceMetrics
+} from './optimization';
+
+// Re-export geometry utilities for advanced usage
+export * as geometry from './geometry';
 
 // Default export for convenience
 const BeamTrace2D = {
