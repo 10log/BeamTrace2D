@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { Wall, Source, Listener, Solver, OptimizedSolver } from '../beamtrace2d';
-import type { ReflectionPath } from '../beamtrace2d';
 
 describe('OptimizedSolver', () => {
   // Simple square room for testing
@@ -169,14 +168,14 @@ describe('OptimizedSolver', () => {
 
       // First call
       solver.getPaths(new Listener([60, 60]));
-      const metrics1 = solver.getMetrics();
 
       // Second call
       solver.getPaths(new Listener([40, 40]));
-      const metrics2 = solver.getMetrics();
+      const metrics = solver.getMetrics();
 
-      // Metrics should be for the second call only
-      expect(metrics2.bucketsSkipped).toBeDefined();
+      // Metrics should be for the second call only (not accumulated)
+      expect(metrics.bucketsSkipped).toBeDefined();
+      expect(typeof metrics.validPathCount).toBe('number');
     });
   });
 

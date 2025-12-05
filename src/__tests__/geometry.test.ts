@@ -11,7 +11,6 @@ import {
   lineFromPoints,
   signedDistanceToLine,
   isPointBehindLine,
-  isPointInFrontOfLine,
   distanceToLine,
   mirrorPointAcrossWall,
   mirrorLineAcrossWall,

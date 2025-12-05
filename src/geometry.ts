@@ -149,10 +149,13 @@ export function mirrorLineAcrossWall(line: Line2D, wallP1: Point, wallP2: Point)
     // Line is not vertical, use x = 0 and x = 1
     p1 = [0, -line.c / line.b];
     p2 = [1, -(line.c + line.a) / line.b];
-  } else {
+  } else if (Math.abs(line.a) > 1e-10) {
     // Line is vertical, use y = 0 and y = 1
     p1 = [-line.c / line.a, 0];
     p2 = [-line.c / line.a, 1];
+  } else {
+    // Degenerate line (both a and b near zero) - return unchanged
+    return { a: line.a, b: line.b, c: line.c };
   }
 
   // Mirror both points

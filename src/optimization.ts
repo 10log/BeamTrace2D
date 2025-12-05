@@ -22,7 +22,6 @@ import {
   lineFromPoints,
   signedDistanceToLine,
   isPointBehindLine,
-  mirrorLineAcrossWall,
   constructBeamBoundaryLines,
   findBeamViolation,
   flipLine,
@@ -531,37 +530,6 @@ function detectFailLineForListener(
   }
 
   return null;
-}
-
-/**
- * Propagate a fail line from a node to a leaf node by mirroring
- * through each intermediate wall
- */
-function propagateFailLineToLeaf(
-  failLine: Line2D,
-  fromNode: OptimizedBeamNode,
-  toLeaf: OptimizedBeamNode,
-  walls: Wall[]
-): Line2D {
-  // Build path from fromNode to toLeaf
-  const path: OptimizedBeamNode[] = [];
-  let current: OptimizedBeamNode | null = toLeaf;
-
-  while (current && current !== fromNode) {
-    path.unshift(current);
-    current = current.parent;
-  }
-
-  // Propagate fail line through each reflection
-  let propagated = failLine;
-  for (const node of path) {
-    if (node.id >= 0) {
-      const wall = walls[node.id];
-      propagated = mirrorLineAcrossWall(propagated, wall.p1, wall.p2);
-    }
-  }
-
-  return propagated;
 }
 
 /**
