@@ -36,7 +36,8 @@
             var source = new BeamTrace2D.Source([200,80]);
 
             // Pass the walls and the source to the solver
-            var reflection_order = 4;
+            // Note: v2.0 fixed reflectionOrder API - now correctly represents number of reflections
+            var reflection_order = 3;
             var solver = new BeamTrace2D.Solver(walls, source, reflection_order);
 
             // Get paths

@@ -77,6 +77,8 @@ describe('BeamTrace2D', () => {
     });
 
     // Replicate the original QUnit test
+    // Note: v1.x used reflectionOrder=4 with a -2 offset bug, giving maxOrder=2
+    // v2.0 fixed the API: reflectionOrder=3 now correctly gives 3 reflection levels (maxOrder=2)
     it('generates correct path_array for test scene', () => {
       const walls: Wall[] = [
         new Wall([100, 130], [120, 220]), // Wall id 0
@@ -93,7 +95,7 @@ describe('BeamTrace2D', () => {
 
       const listener = new Listener([80, 100]);
       const source = new Source([200, 80]);
-      const reflectionOrder = 4;
+      const reflectionOrder = 3;
 
       const solver = new Solver(walls, source, reflectionOrder);
       const pathArray = solver.getPaths(listener);
@@ -120,7 +122,7 @@ describe('BeamTrace2D', () => {
       expect(paths.length).toBeGreaterThan(1);
     });
 
-    it('handles empty listener gracefully', () => {
+    it('throws error when listener is not provided', () => {
       const walls: Wall[] = [
         new Wall([0, 0], [100, 0]),
         new Wall([100, 0], [100, 100]),
@@ -129,8 +131,7 @@ describe('BeamTrace2D', () => {
       const solver = new Solver(walls, source, 2);
 
       // @ts-expect-error - testing runtime behavior with invalid input
-      const paths = solver.getPaths(undefined);
-      expect(paths).toEqual([]);
+      expect(() => solver.getPaths(undefined)).toThrow('BeamTrace2D: listener is required');
     });
 
     it('uses default reflection order when not specified', () => {

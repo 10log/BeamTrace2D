@@ -493,6 +493,9 @@ function pointMirror(p0: Point, p1: Point, p2: Point): Point {
   // Line normal
   let n1: Point = [-(p2[1] - p1[1]), (p2[0] - p1[0])];
   const n1_len = Math.sqrt(n1[0] * n1[0] + n1[1] * n1[1]);
+  if (n1_len === 0) {
+    return p0; // Degenerate wall (p1 === p2), return original point
+  }
   n1 = [n1[0] / n1_len, n1[1] / n1_len];
   // Dot product for distance after translating so dist is relative to origin
   const dist = 2 * (n1[0] * (p0[0] - p1[0]) + n1[1] * (p0[1] - p1[1]));
@@ -502,25 +505,41 @@ function pointMirror(p0: Point, p1: Point, p2: Point): Point {
 
 /** Main solver for beam tracing */
 export class Solver {
-  private readonly MAX_ORDER: number;
+  private readonly maxOrder: number;
   private readonly walls: Wall[];
   private readonly source: Source;
   private readonly bsp: BSPTree;
   private readonly beams: BeamTree;
 
+  /**
+   * @param walls Array of Wall objects defining the environment
+   * @param source The sound source position
+   * @param reflectionOrder Maximum number of reflections to compute (default: 5)
+   *
+   * Note: In v1.x, this parameter was incorrectly offset by -2 internally,
+   * so reflectionOrder=4 actually computed 3 reflections. As of v2.0,
+   * reflectionOrder now correctly represents the number of reflections.
+   * If migrating from v1.x, subtract 1 from your previous value.
+   */
   constructor(walls: Wall[], source: Source, reflectionOrder?: number) {
-    this.MAX_ORDER = reflectionOrder !== undefined ? reflectionOrder - 2 : 4;
+    if (!walls || walls.length === 0) {
+      throw new Error('BeamTrace2D: at least one wall is required');
+    }
+    if (!source) {
+      throw new Error('BeamTrace2D: source is required');
+    }
+    // maxOrder is the 0-based tree depth limit; reflectionOrder N means N reflections (0 to N-1)
+    this.maxOrder = reflectionOrder !== undefined ? reflectionOrder - 1 : 4;
     this.walls = walls;
     this.source = source;
     this.bsp = new BSPTree(walls);
-    this.beams = new BeamTree(source, walls, this.MAX_ORDER);
+    this.beams = new BeamTree(source, walls, this.maxOrder);
   }
 
   /** Get all valid reflection paths from source to listener */
   getPaths(listener: Listener): ReflectionPath[] {
     if (!listener) {
-      console.log("BeamTrace2D update error: no listener defined!");
-      return [];
+      throw new Error("BeamTrace2D: listener is required");
     }
     return this.findPaths(listener, this.beams.mainNode);
   }
@@ -573,6 +592,25 @@ export class Solver {
     }
   }
 
+  /** Check intersection with current BSP node */
+  private checkNodeIntersection(
+    p1: Point,
+    p2: Point,
+    bspNode: BSPNode,
+    ignoreId: number
+  ): IntersectionResult {
+    const lineInt = lineIntersection(
+      p1[0], p1[1], p2[0], p2[1],
+      bspNode.p1[0], bspNode.p1[1], bspNode.p2[0], bspNode.p2[1]
+    );
+    if (bspNode.id === ignoreId) {
+      return null;
+    } else if (lineInt) {
+      return [lineInt[0], lineInt[1], lineInt[2], lineInt[3], lineInt[4], lineInt[5], bspNode.id];
+    }
+    return null;
+  }
+
   /** Ray tracing using BSP tree */
   private rayTrace(
     p1: Point,
@@ -585,47 +623,18 @@ export class Solver {
     if (!bspNode) return null;
 
     let int: IntersectionResult = null;
+    const isFront = inFrontOf(p1, bspNode.p1, bspNode.p2);
+    const nearChild = isFront ? bspNode.front : bspNode.back;
+    const farChild = isFront ? bspNode.back : bspNode.front;
 
-    if (inFrontOf(p1, bspNode.p1, bspNode.p2)) {
-      int = this.rayTrace(p1, p2, bspNode.front, ignoreId, validId, order);
+    int = this.rayTrace(p1, p2, nearChild, ignoreId, validId, order);
 
-      if (!int || !int[2] || !int[3]) {
-        const lineInt = lineIntersection(
-          p1[0], p1[1], p2[0], p2[1],
-          bspNode.p1[0], bspNode.p1[1], bspNode.p2[0], bspNode.p2[1]
-        );
-        if (bspNode.id === ignoreId) {
-          int = null;
-        } else if (lineInt) {
-          int = [lineInt[0], lineInt[1], lineInt[2], lineInt[3], lineInt[4], lineInt[5], bspNode.id];
-        } else {
-          int = null;
-        }
-      }
+    if (!int || !int[2] || !int[3]) {
+      int = this.checkNodeIntersection(p1, p2, bspNode, ignoreId);
+    }
 
-      if (!int || !int[2] || !int[3]) {
-        int = this.rayTrace(p1, p2, bspNode.back, ignoreId, validId, order);
-      }
-    } else {
-      int = this.rayTrace(p1, p2, bspNode.back, ignoreId, validId, order);
-
-      if (!int || !int[2] || !int[3]) {
-        const lineInt = lineIntersection(
-          p1[0], p1[1], p2[0], p2[1],
-          bspNode.p1[0], bspNode.p1[1], bspNode.p2[0], bspNode.p2[1]
-        );
-        if (bspNode.id === ignoreId) {
-          int = null;
-        } else if (lineInt) {
-          int = [lineInt[0], lineInt[1], lineInt[2], lineInt[3], lineInt[4], lineInt[5], bspNode.id];
-        } else {
-          int = null;
-        }
-      }
-
-      if (!int || !int[2] || !int[3]) {
-        int = this.rayTrace(p1, p2, bspNode.front, ignoreId, validId, order);
-      }
+    if (!int || !int[2] || !int[3]) {
+      int = this.rayTrace(p1, p2, farChild, ignoreId, validId, order);
     }
 
     return int;
