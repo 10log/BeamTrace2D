@@ -3,14 +3,49 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width">
-    <title>QUnit Example</title>
+    <title>BeamTrace2D QUnit Tests</title>
     <link rel="stylesheet" href="node_modules/qunitjs/qunit/qunit.css">
 </head>
 <body>
     <div id="qunit"></div>
     <div id="qunit-fixture"></div>
-    <script src="js/beamtrace2d.js"></script>
     <script src="node_modules/qunitjs/qunit/qunit.js"></script>
-    <script src="js/tests.js"></script>
+    <script type="module">
+        import { Wall, Source, Listener, Solver } from './dist/beamtrace2d.js';
+
+        // Make available globally for QUnit tests
+        window.BeamTrace2D = { Wall, Source, Listener, Solver };
+
+        // Run tests after module loads
+        QUnit.test("generate path_array", function(assert) {
+            // First init the walls
+            var walls = [];
+            walls.push(new BeamTrace2D.Wall([100,130],[120,220])); // Wall id 0
+            walls.push(new BeamTrace2D.Wall([50,55],[220,60])); // Wall id 1
+            walls.push(new BeamTrace2D.Wall([220,60],[250,220])); // Wall id 2...
+            walls.push(new BeamTrace2D.Wall([50,220],[200,220])); // etc
+            walls.push(new BeamTrace2D.Wall([50,220],[50,55]));
+            walls.push(new BeamTrace2D.Wall([200,220],[40,230]));
+            walls.push(new BeamTrace2D.Wall([40,230],[30,290]));
+            walls.push(new BeamTrace2D.Wall([30,290],[60,270]));
+            walls.push(new BeamTrace2D.Wall([60,270],[290,270]));
+            walls.push(new BeamTrace2D.Wall([290,270],[250,220]));
+
+            // Then a listener and a source
+            var listener = new BeamTrace2D.Listener([80,100]);
+            var source = new BeamTrace2D.Source([200,80]);
+
+            // Pass the walls and the source to the solver
+            var reflection_order = 4;
+            var solver = new BeamTrace2D.Solver(walls, source, reflection_order);
+
+            // Get paths
+            var path_array = solver.getPaths(listener);
+
+            assert.ok(path_array !== null, "is not null");
+            assert.ok(Array.isArray(path_array), "is an array");
+            assert.equal(path_array.length, 16, "has length 16");
+        });
+    </script>
 </body>
 </html>
