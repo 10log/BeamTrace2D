@@ -26,7 +26,7 @@ npm install
 ### 2D Beam Tracing
 
 ```typescript
-import { Wall, Source, Listener, Solver } from './beamtrace2d';
+import { Wall, Source, Listener, Solver } from 'beam-trace/2d';
 
 // Define room walls
 const walls = [
@@ -56,7 +56,7 @@ import {
   createShoeboxRoom,
   computePathLength,
   computeArrivalTime
-} from './beamtrace3d';
+} from 'beam-trace/3d';
 
 // Create a simple shoebox room (10m x 8m x 3m)
 const room = createShoeboxRoom(10, 8, 3);

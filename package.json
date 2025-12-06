@@ -1,7 +1,7 @@
 {
-  "name": "beam-trace-2d",
-  "version": "2.0.0",
-  "description": "Beam tracing algorithm in 2D",
+  "name": "beam-trace",
+  "version": "3.0.0",
+  "description": "2D and 3D acoustic beam tracing with BSP tree acceleration, fail plane caching, and skip sphere optimization",
   "type": "module",
   "main": "dist/beamtrace2d.js",
   "types": "dist/beamtrace2d.d.ts",
@@ -9,8 +9,31 @@
     ".": {
       "import": "./dist/beamtrace2d.js",
       "types": "./dist/beamtrace2d.d.ts"
+    },
+    "./2d": {
+      "import": "./dist/beamtrace2d.js",
+      "types": "./dist/beamtrace2d.d.ts"
+    },
+    "./3d": {
+      "import": "./dist/beamtrace3d.js",
+      "types": "./dist/beamtrace3d.d.ts"
     }
   },
+  "files": [
+    "dist/beamtrace2d.js",
+    "dist/beamtrace2d.d.ts",
+    "dist/beamtrace2d.d.ts.map",
+    "dist/beamtrace3d.js",
+    "dist/beamtrace3d.d.ts",
+    "dist/beamtrace3d.d.ts.map",
+    "dist/core",
+    "dist/geometry",
+    "dist/structures",
+    "dist/optimization",
+    "dist/solver",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc && npm run bundle",
     "bundle": "node build.mjs",
@@ -19,16 +42,21 @@
     "test:watch": "vitest",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
-    "start": "node server.js"
+    "start": "node server.js",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kai5z/BeamTrace2D.git"
   },
   "keywords": [
-    "applied acoustics",
     "acoustics",
     "beam tracing",
+    "ray tracing",
+    "room acoustics",
+    "audio",
+    "3d",
+    "bsp",
     "typescript"
   ],
   "author": "Kai Saksela",
@@ -40,9 +68,8 @@
     "url": "https://github.com/kai5z/BeamTrace2D/issues"
   },
   "homepage": "https://github.com/kai5z/BeamTrace2D#readme",
-  "dependencies": {
-    "express": "^4.14.0",
-    "qunitjs": "^2.0.1"
+  "engines": {
+    "node": ">=18.0.0"
   },
   "devDependencies": {
     "@types/qunit": "^2.19.10",
@@ -51,6 +78,8 @@
     "@typescript-eslint/parser": "^7.18.0",
     "esbuild": "^0.24.0",
     "eslint": "^8.57.1",
+    "express": "^4.14.0",
+    "qunitjs": "^2.0.1",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
