@@ -3,12 +3,12 @@
   "version": "3.0.0",
   "description": "2D and 3D acoustic beam tracing with BSP tree acceleration, fail plane caching, and skip sphere optimization",
   "type": "module",
-  "main": "dist/beamtrace2d.js",
-  "types": "dist/beamtrace2d.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/beamtrace2d.js",
-      "types": "./dist/beamtrace2d.d.ts"
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./2d": {
       "import": "./dist/beamtrace2d.js",
@@ -20,6 +20,9 @@
     }
   },
   "files": [
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/index.d.ts.map",
     "dist/beamtrace2d.js",
     "dist/beamtrace2d.d.ts",
     "dist/beamtrace2d.d.ts.map",
@@ -28,6 +31,12 @@
     "dist/beamtrace3d.d.ts.map",
     "dist/core",
     "dist/geometry",
+    "dist/geometry.js",
+    "dist/geometry.d.ts",
+    "dist/geometry.d.ts.map",
+    "dist/optimization.js",
+    "dist/optimization.d.ts",
+    "dist/optimization.d.ts.map",
     "dist/structures",
     "dist/optimization",
     "dist/solver",
