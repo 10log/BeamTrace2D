@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>BeamTrace3D Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    canvas { display: block; }
+
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      min-width: 160px;
+    }
+
+    #info h3 {
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #88ccff;
+    }
+
+    #info .row {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    #info .label { color: #aaa; }
+    #info .value { color: #fff; font-weight: 500; }
+    #info .separator { height: 1px; background: rgba(255,255,255,0.15); margin: 6px 0; }
+
+    #positions {
+      position: absolute;
+      top: 10px;
+      left: 190px;
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: flex;
+      gap: 16px;
+    }
+
+    #positions h4 {
+      margin: 0 0 8px 0;
+      font-size: 12px;
+      color: #88ccff;
+    }
+
+    #positions .position-group h4:first-child {
+      color: #ff6666;
+    }
+
+    #positions .position-group:last-child h4 {
+      color: #6699ff;
+    }
+
+    .coord-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin: 4px 0;
+    }
+
+    .coord-label {
+      width: 16px;
+      color: #aaa;
+    }
+
+    .coord-value {
+      width: 45px;
+      text-align: center;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .coord-btn {
+      background: rgba(136, 204, 255, 0.2);
+      border: 1px solid rgba(136, 204, 255, 0.4);
+      color: white;
+      width: 22px;
+      height: 22px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1;
+      padding: 0;
+    }
+
+    .coord-btn:hover {
+      background: rgba(136, 204, 255, 0.4);
+    }
+
+    .coord-btn:active {
+      background: rgba(136, 204, 255, 0.6);
+    }
+
+    #legend {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    #legend h4 {
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #88ccff;
+    }
+
+    #legend .item {
+      display: flex;
+      align-items: center;
+      margin: 4px 0;
+    }
+
+    #legend .color {
+      width: 20px;
+      height: 3px;
+      margin-right: 8px;
+      border-radius: 2px;
+    }
+
+    #legend .item.dimmed {
+      opacity: 0.3;
+    }
+
+    #controls {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    #controls kbd {
+      background: rgba(255, 255, 255, 0.15);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin: 0 2px;
+    }
+
+    #orderControl {
+      position: absolute;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(0, 0, 0, 0.75);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    #orderControl button {
+      background: rgba(136, 204, 255, 0.3);
+      border: 1px solid #88ccff;
+      color: white;
+      padding: 6px 14px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: background 0.2s;
+    }
+
+    #orderControl button:hover {
+      background: rgba(136, 204, 255, 0.5);
+    }
+
+    #orderControl button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    #orderControl .order-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #88ccff;
+      min-width: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">
+    <h3>BeamTrace3D</h3>
+    <div class="row"><span class="label">Paths:</span><span class="value" id="pathCount">0</span></div>
+    <div class="row"><span class="label">Leaf Nodes:</span><span class="value" id="leafNodes">0</span></div>
+    <div class="row separator"></div>
+    <div class="row"><span class="label">Raycasts:</span><span class="value" id="raycasts">0</span></div>
+    <div class="row"><span class="label">Fail Plane:</span><span class="value" id="failPlane">0 / 0</span></div>
+    <div class="row"><span class="label">Skip Sphere:</span><span class="value" id="skipSphere">0 / 0</span></div>
+    <div class="row separator"></div>
+    <div class="row"><span class="label">Precompute:</span><span class="value" id="precomputeTime">0 ms</span></div>
+    <div class="row"><span class="label">Solve:</span><span class="value" id="computeTime">0 ms</span></div>
+    <div class="row"><span class="label">Render:</span><span class="value" id="renderTime">0 ms</span></div>
+    <div class="row separator"></div>
+    <div class="row"><span class="label">FPS:</span><span class="value" id="fps">0</span></div>
+  </div>
+
+  <div id="positions">
+    <div class="position-group">
+      <h4>Source (red)</h4>
+      <div class="coord-row">
+        <span class="coord-label">X:</span>
+        <button class="coord-btn" data-target="source" data-axis="x" data-delta="-0.5">-</button>
+        <span class="coord-value" id="sourceX">0.0</span>
+        <button class="coord-btn" data-target="source" data-axis="x" data-delta="0.5">+</button>
+      </div>
+      <div class="coord-row">
+        <span class="coord-label">Y:</span>
+        <button class="coord-btn" data-target="source" data-axis="y" data-delta="-0.5">-</button>
+        <span class="coord-value" id="sourceY">0.0</span>
+        <button class="coord-btn" data-target="source" data-axis="y" data-delta="0.5">+</button>
+      </div>
+      <div class="coord-row">
+        <span class="coord-label">Z:</span>
+        <button class="coord-btn" data-target="source" data-axis="z" data-delta="-0.25">-</button>
+        <span class="coord-value" id="sourceZ">0.0</span>
+        <button class="coord-btn" data-target="source" data-axis="z" data-delta="0.25">+</button>
+      </div>
+    </div>
+    <div class="position-group">
+      <h4>Listener (blue)</h4>
+      <div class="coord-row">
+        <span class="coord-label">X:</span>
+        <button class="coord-btn" data-target="listener" data-axis="x" data-delta="-0.5">-</button>
+        <span class="coord-value" id="listenerX">0.0</span>
+        <button class="coord-btn" data-target="listener" data-axis="x" data-delta="0.5">+</button>
+      </div>
+      <div class="coord-row">
+        <span class="coord-label">Y:</span>
+        <button class="coord-btn" data-target="listener" data-axis="y" data-delta="-0.5">-</button>
+        <span class="coord-value" id="listenerY">0.0</span>
+        <button class="coord-btn" data-target="listener" data-axis="y" data-delta="0.5">+</button>
+      </div>
+      <div class="coord-row">
+        <span class="coord-label">Z:</span>
+        <button class="coord-btn" data-target="listener" data-axis="z" data-delta="-0.25">-</button>
+        <span class="coord-value" id="listenerZ">0.0</span>
+        <button class="coord-btn" data-target="listener" data-axis="z" data-delta="0.25">+</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="legend">
+    <h4>Reflection Order</h4>
+    <div class="item" id="legend-0"><div class="color" style="background: #00ff00;"></div>Direct</div>
+    <div class="item" id="legend-1"><div class="color" style="background: #ffff00;"></div>1st order</div>
+    <div class="item" id="legend-2"><div class="color" style="background: #ff8800;"></div>2nd order</div>
+    <div class="item" id="legend-3"><div class="color" style="background: #ff0088;"></div>3rd order</div>
+    <div class="item" id="legend-4"><div class="color" style="background: #8800ff;"></div>4th+ order</div>
+  </div>
+
+  <div id="orderControl">
+    <span>Reflection Order:</span>
+    <button id="orderDown">-</button>
+    <span class="order-value" id="orderValue">3</span>
+    <button id="orderUp">+</button>
+    <span style="margin-left: 20px;">View:</span>
+    <button id="toggleView" style="min-width: 60px;">Paths</button>
+  </div>
+
+  <div id="controls">
+    <kbd>Drag</kbd> spheres (plan: XY, section: height) &nbsp;|&nbsp;
+    <kbd>Click</kbd> floor to move listener &nbsp;|&nbsp;
+    <kbd>Drag</kbd> elsewhere to rotate &nbsp;|&nbsp;
+    <kbd>Scroll</kbd> to zoom &nbsp;|&nbsp;
+    <kbd>+/-</kbd> reflection order &nbsp;|&nbsp;
+    <kbd>B</kbd> toggle beams
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="dist/main3d.bundle.js"></script>
+</body>
+</html>
