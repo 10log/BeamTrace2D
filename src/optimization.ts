@@ -498,7 +498,7 @@ class OptimizedBeamTree {
 function detectFailLineForListener(
   listenerPos: Point,
   leafNode: OptimizedBeamNode,
-  walls: Wall[]
+  _walls: Wall[]
 ): { line: Line2D; type: FailLineType } | null {
   // We need to trace from the leaf node to the root, computing the
   // clipped beam boundaries at each level to determine if the listener
