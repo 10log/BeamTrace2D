@@ -114,13 +114,11 @@ export const Polygon3D = {
   classify(poly: Polygon3D, plane: Plane3D, epsilon: number = 1e-6): PolygonClassification {
     let front = 0;
     let back = 0;
-    let on = 0;
 
     for (const v of poly.vertices) {
       const classification = Plane3D.classifyPoint(v, plane, epsilon);
       if (classification === 'front') front++;
       else if (classification === 'back') back++;
-      else on++;
     }
 
     if (front > 0 && back > 0) return 'spanning';

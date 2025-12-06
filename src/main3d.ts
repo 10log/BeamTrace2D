@@ -6,14 +6,13 @@
  */
 
 import * as THREE from 'three';
-// @ts-ignore - OrbitControls loaded from CDN via import map
+// @ts-expect-error - OrbitControls loaded from CDN via import map
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import {
   createShoeboxRoom,
   Source3D,
   Listener3D,
   Solver3D,
-  Polygon3D,
   getPathReflectionOrder
 } from './beamtrace3d';
 import type { Vector3 as BT_Vector3, ReflectionPath3D, BeamVisualizationData } from './beamtrace3d';
@@ -525,8 +524,7 @@ const PATH_UPDATE_THROTTLE = 16; // ~60fps for listener
 const UI_UPDATE_THROTTLE = 50; // 20fps for UI text updates
 let pendingSourceUpdate = false;
 
-// Drag plane - dynamically set based on camera orientation
-const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+// Drag intersection point
 const intersectPoint = new THREE.Vector3();
 
 /**

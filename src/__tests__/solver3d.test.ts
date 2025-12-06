@@ -259,7 +259,6 @@ describe('OptimizedSolver3D', () => {
 
       // First call - no cache
       solver.getPaths([3, 3, 1.2]);
-      const metrics1 = solver.getMetrics();
 
       // Second call at nearby position - should have cache hits
       solver.getPaths([3.01, 3.01, 1.2]);

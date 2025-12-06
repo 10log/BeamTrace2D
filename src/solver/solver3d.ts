@@ -9,11 +9,10 @@
  */
 
 import { Vector3 } from '../core/vector3';
-import { Plane3D } from '../core/plane3d';
 import { PathPoint3D, ReflectionPath3D } from '../core/types';
 import { Polygon3D } from '../geometry/polygon3d';
 import { BSPNode3D, buildBSP, rayTraceBSP } from '../structures/bsp3d';
-import { BeamTree3D, BeamNode3D, buildBeamTree3D, getNodeOrder, clearFailPlanes } from '../structures/beamtree3d';
+import { BeamTree3D, BeamNode3D, buildBeamTree3D, clearFailPlanes } from '../structures/beamtree3d';
 import { detectFailPlane, isListenerBehindFailPlane } from '../optimization/failplane3d';
 import {
   Bucket3D,
