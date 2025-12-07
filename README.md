@@ -43,6 +43,17 @@ const solver = new Solver(walls, source, 4); // 4 = max reflection order
 // Find paths to listener
 const listener = new Listener([60, 60]);
 const paths = solver.getPaths(listener);
+
+// Get detailed path information with angles
+const detailedPaths = solver.getDetailedPaths(listener);
+for (const path of detailedPaths) {
+  console.log(`Path length: ${path.totalPathLength.toFixed(2)}m`);
+  console.log(`Reflections: ${path.reflectionCount}`);
+  for (const reflection of path.reflections) {
+    const angleInDegrees = reflection.incidenceAngle * (180 / Math.PI);
+    console.log(`  Wall ${reflection.wallId}: angle ${angleInDegrees.toFixed(1)}°`);
+  }
+}
 ```
 
 ### 3D Beam Tracing
@@ -159,6 +170,61 @@ src/
 | **Combined** | **~60x** | Total speedup vs naive implementation |
 
 ## API Reference
+
+### 2D Types
+
+```typescript
+type Point = [number, number];
+type PathPoint = [number, number, number | null]; // [x, y, wallId]
+type ReflectionPath = PathPoint[];
+
+interface ReflectionDetail {
+  wall: Wall;                    // The wall that was hit
+  wallId: number;                // Index of the wall
+  hitPoint: Point;               // Point where reflection occurred
+  incidenceAngle: number;        // Angle of incidence (radians)
+  reflectionAngle: number;       // Angle of reflection (radians)
+  incomingDirection: Point;      // Normalized incoming ray direction
+  outgoingDirection: Point;      // Normalized outgoing ray direction
+  wallNormal: Point;             // Wall normal (toward incoming ray)
+  reflectionOrder: number;       // Which reflection (1 = first, 2 = second, etc.)
+  wallPosition: number;          // Parametric position on wall (0 = p1, 1 = p2)
+  cumulativeDistance: number;    // Distance traveled up to this reflection
+  incomingSegmentLength: number; // Length of incoming segment
+  isGrazing: boolean;            // True if angle near 90° (numerically unstable)
+}
+
+interface SegmentDetail {
+  startPoint: Point;             // Start of segment
+  endPoint: Point;               // End of segment
+  length: number;                // Segment length
+  segmentIndex: number;          // Index (0 = first segment from listener)
+}
+
+interface DetailedReflectionPath {
+  listenerPosition: Point;       // Start point
+  sourcePosition: Point;         // End point
+  totalPathLength: number;       // Total path distance
+  reflectionCount: number;       // Number of reflections
+  reflections: ReflectionDetail[]; // Details for each reflection
+  segments: SegmentDetail[];     // Details for each path segment
+  simplePath: ReflectionPath;    // Original path representation
+}
+```
+
+### 2D Classes
+
+- `Wall(p1: Point, p2: Point)` - Wall segment defined by two endpoints
+- `Source(position: Point)` - Sound source position
+- `Listener(position: Point)` - Listener position
+- `Solver(walls, source, reflectionOrder?)` - Main solver
+
+#### Solver Methods (2D)
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `getPaths(listener)` | `ReflectionPath[]` | Find all valid reflection paths |
+| `getDetailedPaths(listener)` | `DetailedReflectionPath[]` | Find paths with full reflection details including angles |
 
 ### 3D Types
 
