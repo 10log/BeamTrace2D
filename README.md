@@ -103,6 +103,17 @@ const metrics = solver.getMetrics();
 console.log(`Valid paths: ${metrics.validPathCount}`);
 console.log(`Cache hits: ${metrics.failPlaneCacheHits}`);
 console.log(`Buckets skipped: ${metrics.bucketsSkipped}`);
+
+// Get detailed path information with angles
+const detailedPaths = solver.getDetailedPaths(listener);
+for (const path of detailedPaths) {
+  console.log(`Path length: ${path.totalPathLength.toFixed(2)}m`);
+  console.log(`Reflections: ${path.reflectionCount}`);
+  for (const reflection of path.reflections) {
+    const angleInDegrees = reflection.incidenceAngle * (180 / Math.PI);
+    console.log(`  Polygon ${reflection.polygonId}: angle ${angleInDegrees.toFixed(1)}°`);
+  }
+}
 ```
 
 ## Commands
@@ -243,6 +254,38 @@ interface PathPoint3D {
 }
 
 type ReflectionPath3D = PathPoint3D[];
+
+interface ReflectionDetail3D {
+  polygon: Polygon3D;              // The polygon that was hit
+  polygonId: number;               // Index of the polygon
+  hitPoint: Vector3;               // Point where reflection occurred [x, y, z]
+  incidenceAngle: number;          // Angle of incidence (radians)
+  reflectionAngle: number;         // Angle of reflection (radians)
+  incomingDirection: Vector3;      // Normalized incoming ray direction
+  outgoingDirection: Vector3;      // Normalized outgoing ray direction
+  surfaceNormal: Vector3;          // Surface normal (toward incoming ray)
+  reflectionOrder: number;         // Which reflection (1 = first, 2 = second, etc.)
+  cumulativeDistance: number;      // Distance traveled up to this reflection
+  incomingSegmentLength: number;   // Length of incoming segment
+  isGrazing: boolean;              // True if angle near 90° (numerically unstable)
+}
+
+interface SegmentDetail3D {
+  startPoint: Vector3;             // Start of segment
+  endPoint: Vector3;               // End of segment
+  length: number;                  // Segment length
+  segmentIndex: number;            // Index (0 = first segment from listener)
+}
+
+interface DetailedReflectionPath3D {
+  listenerPosition: Vector3;       // Start point
+  sourcePosition: Vector3;         // End point
+  totalPathLength: number;         // Total path distance
+  reflectionCount: number;         // Number of reflections
+  reflections: ReflectionDetail3D[]; // Details for each reflection
+  segments: SegmentDetail3D[];     // Details for each path segment
+  simplePath: ReflectionPath3D;    // Original path representation
+}
 ```
 
 ### 3D Classes
@@ -256,6 +299,7 @@ type ReflectionPath3D = PathPoint3D[];
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `getPaths(listener)` | `ReflectionPath3D[]` | Find all valid reflection paths to listener |
+| `getDetailedPaths(listener)` | `DetailedReflectionPath3D[]` | Find paths with full reflection details including angles |
 | `getMetrics()` | `PerformanceMetrics3D` | Get performance stats from last `getPaths()` call |
 | `getBeamsForVisualization(maxOrder?)` | `BeamVisualizationData[]` | Get beam cone geometry for rendering |
 | `getLeafNodeCount()` | `number` | Number of leaf nodes in beam tree |
@@ -295,6 +339,7 @@ interface BeamVisualizationData {
 - `computePathLength(path)` - Total path distance in meters
 - `computeArrivalTime(path, speedOfSound?)` - Arrival time in seconds
 - `getPathReflectionOrder(path)` - Number of reflections
+- `convertToDetailedPath3D(path, polygons)` - Convert a simple path to detailed path with reflection info
 
 ## Demos
 
