@@ -35,6 +35,9 @@ export type {
   Point3D,
   PathPoint3D,
   ReflectionPath3D,
+  ReflectionDetail3D,
+  SegmentDetail3D,
+  DetailedReflectionPath3D,
   PointClassification,
   PolygonClassification,
   FailPlaneType
@@ -113,7 +116,8 @@ export {
   OptimizedSolver3D,
   computePathLength,
   computeArrivalTime,
-  getPathReflectionOrder
+  getPathReflectionOrder,
+  convertToDetailedPath3D
 } from './solver/solver3d';
 export type { PerformanceMetrics3D, OptimizedSolver3DConfig, BeamVisualizationData } from './solver/solver3d';
 
@@ -121,7 +125,7 @@ export type { PerformanceMetrics3D, OptimizedSolver3DConfig, BeamVisualizationDa
 import { Vector3 } from './core/vector3';
 import { Polygon3D, createShoeboxRoom } from './geometry/polygon3d';
 import { OptimizedSolver3D, OptimizedSolver3DConfig, BeamVisualizationData } from './solver/solver3d';
-import type { ReflectionPath3D } from './core/types';
+import type { ReflectionPath3D, DetailedReflectionPath3D } from './core/types';
 
 /**
  * 3D Sound source
@@ -174,6 +178,23 @@ export class Solver3D {
   getPaths(listener: Listener3D | Vector3): ReflectionPath3D[] {
     const pos = Array.isArray(listener) ? listener : listener.position;
     return this.solver.getPaths(pos);
+  }
+
+  /**
+   * Get all valid reflection paths with detailed information about each reflection.
+   *
+   * This method returns the same paths as getPaths() but with additional details:
+   * - Angle of incidence and reflection at each surface
+   * - Surface normal vectors
+   * - Segment lengths and cumulative distances
+   * - Grazing incidence detection
+   *
+   * @param listener - Listener position or Listener3D object
+   * @returns Array of detailed reflection paths
+   */
+  getDetailedPaths(listener: Listener3D | Vector3): DetailedReflectionPath3D[] {
+    const pos = Array.isArray(listener) ? listener : listener.position;
+    return this.solver.getDetailedPaths(pos);
   }
 
   /**

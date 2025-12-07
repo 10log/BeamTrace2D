@@ -9,7 +9,8 @@ import {
   OptimizedSolver3D,
   computePathLength,
   computeArrivalTime,
-  getPathReflectionOrder
+  getPathReflectionOrder,
+  convertToDetailedPath3D
 } from '../solver/solver3d';
 
 describe('OptimizedSolver3D', () => {
@@ -348,5 +349,374 @@ describe('getPathReflectionOrder', () => {
     ];
 
     expect(getPathReflectionOrder(path)).toBe(2);
+  });
+});
+
+describe('getDetailedPaths (3D)', () => {
+  describe('basic functionality', () => {
+    it('returns detailed paths for all paths', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const simplePaths = solver.getPaths(listener);
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      expect(detailedPaths.length).toBe(simplePaths.length);
+    });
+
+    it('returns direct path with no reflections', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 0 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+      const directPaths = detailedPaths.filter(p => p.reflectionCount === 0);
+
+      expect(directPaths.length).toBe(1);
+      expect(directPaths[0].reflections.length).toBe(0);
+      expect(directPaths[0].segments.length).toBe(1);
+    });
+
+    it('preserves simple path reference', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 1 });
+
+      const simplePaths = solver.getPaths(listener);
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      // Each detailed path should have its simple path
+      for (let i = 0; i < detailedPaths.length; i++) {
+        expect(detailedPaths[i].simplePath).toBeDefined();
+        expect(detailedPaths[i].simplePath.length).toBeGreaterThanOrEqual(2);
+      }
+    });
+  });
+
+  describe('position information', () => {
+    it('correctly identifies listener position', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 1 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        expect(path.listenerPosition[0]).toBeCloseTo(listener[0], 5);
+        expect(path.listenerPosition[1]).toBeCloseTo(listener[1], 5);
+        expect(path.listenerPosition[2]).toBeCloseTo(listener[2], 5);
+      }
+    });
+
+    it('correctly identifies source position', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 1 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        expect(path.sourcePosition[0]).toBeCloseTo(source[0], 5);
+        expect(path.sourcePosition[1]).toBeCloseTo(source[1], 5);
+        expect(path.sourcePosition[2]).toBeCloseTo(source[2], 5);
+      }
+    });
+  });
+
+  describe('path length calculation', () => {
+    it('calculates correct total path length', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const simplePaths = solver.getPaths(listener);
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (let i = 0; i < detailedPaths.length; i++) {
+        const expectedLength = computePathLength(simplePaths[i]);
+        expect(detailedPaths[i].totalPathLength).toBeCloseTo(expectedLength, 5);
+      }
+    });
+
+    it('segment lengths sum to total path length', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        const segmentSum = path.segments.reduce((sum, s) => sum + s.length, 0);
+        expect(segmentSum).toBeCloseTo(path.totalPathLength, 5);
+      }
+    });
+  });
+
+  describe('segment information', () => {
+    it('has correct number of segments', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        // Segments = reflections + 1
+        expect(path.segments.length).toBe(path.reflectionCount + 1);
+      }
+    });
+
+    it('segments have correct indices', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (let i = 0; i < path.segments.length; i++) {
+          expect(path.segments[i].segmentIndex).toBe(i);
+        }
+      }
+    });
+
+    it('segment endpoints are connected', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        // First segment starts at listener
+        expect(path.segments[0].startPoint[0]).toBeCloseTo(path.listenerPosition[0], 5);
+        expect(path.segments[0].startPoint[1]).toBeCloseTo(path.listenerPosition[1], 5);
+        expect(path.segments[0].startPoint[2]).toBeCloseTo(path.listenerPosition[2], 5);
+
+        // Last segment ends at source
+        const lastSegment = path.segments[path.segments.length - 1];
+        expect(lastSegment.endPoint[0]).toBeCloseTo(path.sourcePosition[0], 5);
+        expect(lastSegment.endPoint[1]).toBeCloseTo(path.sourcePosition[1], 5);
+        expect(lastSegment.endPoint[2]).toBeCloseTo(path.sourcePosition[2], 5);
+
+        // Consecutive segments share endpoints
+        for (let i = 1; i < path.segments.length; i++) {
+          expect(path.segments[i].startPoint[0]).toBeCloseTo(path.segments[i-1].endPoint[0], 5);
+          expect(path.segments[i].startPoint[1]).toBeCloseTo(path.segments[i-1].endPoint[1], 5);
+          expect(path.segments[i].startPoint[2]).toBeCloseTo(path.segments[i-1].endPoint[2], 5);
+        }
+      }
+    });
+  });
+
+  describe('reflection details', () => {
+    it('reflection count matches path structure', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 3 });
+
+      const simplePaths = solver.getPaths(listener);
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (let i = 0; i < detailedPaths.length; i++) {
+        const expectedOrder = getPathReflectionOrder(simplePaths[i]);
+        expect(detailedPaths[i].reflectionCount).toBe(expectedOrder);
+        expect(detailedPaths[i].reflections.length).toBe(expectedOrder);
+      }
+    });
+
+    it('reflections have correct order numbers', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 3 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (let i = 0; i < path.reflections.length; i++) {
+          expect(path.reflections[i].reflectionOrder).toBe(i + 1);
+        }
+      }
+    });
+
+    it('reflections have valid polygon references', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          expect(reflection.polygonId).toBeGreaterThanOrEqual(0);
+          expect(reflection.polygonId).toBeLessThan(room.length);
+          expect(reflection.polygon).toBeDefined();
+        }
+      }
+    });
+  });
+
+  describe('angle calculations', () => {
+    it('incidence angle equals reflection angle (specular)', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          expect(reflection.incidenceAngle).toBeCloseTo(reflection.reflectionAngle, 5);
+        }
+      }
+    });
+
+    it('angles are in valid range (0 to π/2)', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          expect(reflection.incidenceAngle).toBeGreaterThanOrEqual(0);
+          expect(reflection.incidenceAngle).toBeLessThanOrEqual(Math.PI / 2 + 0.001);
+        }
+      }
+    });
+
+    it('direction vectors are normalized', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          const inLen = Vector3.length(reflection.incomingDirection);
+          const outLen = Vector3.length(reflection.outgoingDirection);
+          const normLen = Vector3.length(reflection.surfaceNormal);
+
+          expect(inLen).toBeCloseTo(1, 5);
+          expect(outLen).toBeCloseTo(1, 5);
+          expect(normLen).toBeCloseTo(1, 5);
+        }
+      }
+    });
+
+    it('surface normal points toward incoming ray', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          // Dot product of incoming direction and normal should be negative
+          // (incoming points toward surface, normal points away from surface toward ray)
+          const dot = Vector3.dot(reflection.incomingDirection, reflection.surfaceNormal);
+          expect(dot).toBeLessThanOrEqual(0.001);
+        }
+      }
+    });
+  });
+
+  describe('distance calculations', () => {
+    it('cumulative distance increases with each reflection', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 3 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        let prevDistance = 0;
+        for (const reflection of path.reflections) {
+          expect(reflection.cumulativeDistance).toBeGreaterThan(prevDistance);
+          prevDistance = reflection.cumulativeDistance;
+        }
+      }
+    });
+
+    it('incoming segment length matches segment detail', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (let i = 0; i < path.reflections.length; i++) {
+          const reflection = path.reflections[i];
+          const segment = path.segments[i];
+          expect(reflection.incomingSegmentLength).toBeCloseTo(segment.length, 5);
+        }
+      }
+    });
+  });
+
+  describe('grazing incidence detection', () => {
+    it('isGrazing is boolean', () => {
+      const room = createShoeboxRoom(10, 8, 3);
+      const source: Vector3 = [5, 4, 1.5];
+      const listener: Vector3 = [3, 3, 1.2];
+      const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 2 });
+
+      const detailedPaths = solver.getDetailedPaths(listener);
+
+      for (const path of detailedPaths) {
+        for (const reflection of path.reflections) {
+          expect(typeof reflection.isGrazing).toBe('boolean');
+        }
+      }
+    });
+  });
+});
+
+describe('convertToDetailedPath3D', () => {
+  it('throws error for path with less than 2 points', () => {
+    const room = createShoeboxRoom(10, 8, 3);
+    const path = [
+      { position: [0, 0, 0] as Vector3, polygonId: null }
+    ];
+
+    expect(() => convertToDetailedPath3D(path, room)).toThrow();
+  });
+
+  it('handles direct path correctly', () => {
+    const room = createShoeboxRoom(10, 8, 3);
+    const path = [
+      { position: [1, 1, 1] as Vector3, polygonId: null },
+      { position: [5, 4, 1.5] as Vector3, polygonId: null }
+    ];
+
+    const detailed = convertToDetailedPath3D(path, room);
+
+    expect(detailed.reflectionCount).toBe(0);
+    expect(detailed.reflections.length).toBe(0);
+    expect(detailed.segments.length).toBe(1);
   });
 });
