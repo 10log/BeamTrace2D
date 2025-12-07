@@ -386,13 +386,12 @@ describe('getDetailedPaths (3D)', () => {
       const listener: Vector3 = [3, 3, 1.2];
       const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 1 });
 
-      const simplePaths = solver.getPaths(listener);
       const detailedPaths = solver.getDetailedPaths(listener);
 
       // Each detailed path should have its simple path
-      for (let i = 0; i < detailedPaths.length; i++) {
-        expect(detailedPaths[i].simplePath).toBeDefined();
-        expect(detailedPaths[i].simplePath.length).toBeGreaterThanOrEqual(2);
+      for (const detailedPath of detailedPaths) {
+        expect(detailedPath.simplePath).toBeDefined();
+        expect(detailedPath.simplePath.length).toBeGreaterThanOrEqual(2);
       }
     });
   });
