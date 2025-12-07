@@ -387,6 +387,64 @@ function inFrontOf(p0, p1, p2) {
     // Dot product for distance after translating so dist is relative to origin
     return n1[0] * (p0[0] - p1[0]) + n1[1] * (p0[1] - p1[1]) > 0;
 }
+/** Calculates the normalized direction vector from p1 to p2 */
+function normalizeDirection(p1, p2) {
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0)
+        return [0, 0];
+    return [dx / len, dy / len];
+}
+/** Calculates the distance between two points */
+function distance(p1, p2) {
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    return Math.sqrt(dx * dx + dy * dy);
+}
+/** Gets the wall normal vector (normalized), optionally oriented toward a reference point */
+function getWallNormal(wall, referencePoint) {
+    const dx = wall.p2[0] - wall.p1[0];
+    const dy = wall.p2[1] - wall.p1[1];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0)
+        return [0, 0];
+    // Normal is perpendicular to wall direction
+    let normal = [-dy / len, dx / len];
+    // If reference point provided, orient normal toward it
+    if (referencePoint) {
+        const toRef = [referencePoint[0] - wall.p1[0], referencePoint[1] - wall.p1[1]];
+        const dot = normal[0] * toRef[0] + normal[1] * toRef[1];
+        if (dot < 0) {
+            normal = [-normal[0], -normal[1]];
+        }
+    }
+    return normal;
+}
+/** Calculates the angle between a direction vector and a wall normal (in radians) */
+function calculateIncidenceAngle(direction, wallNormal) {
+    // Dot product gives cos(angle) between the vectors
+    // We want the angle with respect to the normal, so we use the incoming direction (negated)
+    const incomingDir = [-direction[0], -direction[1]];
+    const dot = incomingDir[0] * wallNormal[0] + incomingDir[1] * wallNormal[1];
+    // Clamp to avoid floating point errors with acos
+    const clampedDot = Math.max(-1, Math.min(1, dot));
+    return Math.acos(clampedDot);
+}
+/** Calculates the parametric position (t) of a point along a wall (0 = p1, 1 = p2) */
+function calculateWallPosition(hitPoint, wall) {
+    const wallDx = wall.p2[0] - wall.p1[0];
+    const wallDy = wall.p2[1] - wall.p1[1];
+    const wallLengthSq = wallDx * wallDx + wallDy * wallDy;
+    if (wallLengthSq === 0)
+        return 0;
+    const pointDx = hitPoint[0] - wall.p1[0];
+    const pointDy = hitPoint[1] - wall.p1[1];
+    const t = (pointDx * wallDx + pointDy * wallDy) / wallLengthSq;
+    return Math.max(0, Math.min(1, t));
+}
+/** Threshold angle (in radians) for grazing incidence detection - within 5° of 90° */
+const GRAZING_THRESHOLD = Math.PI / 2 - (5 * Math.PI / 180);
 /** Mirrors point p0 along line defined by p1 and p2 */
 function pointMirror(p0, p1, p2) {
     // Line normal
@@ -433,6 +491,90 @@ export class Solver {
             throw new Error("BeamTrace2D: listener is required");
         }
         return this.findPaths(listener, this.beams.mainNode);
+    }
+    /**
+     * Get detailed information about all valid reflection paths from source to listener.
+     * Returns comprehensive data including wall references, hit points, and angles.
+     */
+    getDetailedPaths(listener) {
+        if (!listener) {
+            throw new Error("BeamTrace2D: listener is required");
+        }
+        const simplePaths = this.getPaths(listener);
+        return simplePaths.map(path => this.convertToDetailedPath(path));
+    }
+    /** Convert a simple ReflectionPath to a DetailedReflectionPath */
+    convertToDetailedPath(path) {
+        const listenerPosition = [path[0][0], path[0][1]];
+        const sourcePosition = [path[path.length - 1][0], path[path.length - 1][1]];
+        const reflections = [];
+        const segments = [];
+        let totalPathLength = 0;
+        let cumulativeDistance = 0;
+        let reflectionOrder = 0;
+        // Path goes from listener -> reflection points -> source
+        // So reflections are at indices 1 to path.length - 2
+        for (let i = 0; i < path.length - 1; i++) {
+            const currentPoint = [path[i][0], path[i][1]];
+            const nextPoint = [path[i + 1][0], path[i + 1][1]];
+            // Calculate segment length
+            const segmentLength = distance(currentPoint, nextPoint);
+            totalPathLength += segmentLength;
+            // Store segment details
+            segments.push({
+                startPoint: currentPoint,
+                endPoint: nextPoint,
+                length: segmentLength,
+                segmentIndex: i
+            });
+            // If next point is a reflection (has a wall ID), compute details
+            const wallId = path[i + 1][2];
+            if (wallId !== null && i + 2 < path.length) {
+                reflectionOrder++;
+                cumulativeDistance += segmentLength;
+                const hitPoint = [path[i + 1][0], path[i + 1][1]];
+                const prevPoint = currentPoint;
+                const nextNextPoint = [path[i + 2][0], path[i + 2][1]];
+                const wall = this.walls[wallId];
+                // Calculate directions
+                const incomingDirection = normalizeDirection(prevPoint, hitPoint);
+                const outgoingDirection = normalizeDirection(hitPoint, nextNextPoint);
+                // Get wall normal oriented toward the incoming ray
+                const wallNormal = getWallNormal(wall, prevPoint);
+                // Calculate incidence angle (angle between incoming ray and normal)
+                const incidenceAngle = calculateIncidenceAngle(incomingDirection, wallNormal);
+                // For specular reflection, reflection angle equals incidence angle
+                const reflectionAngle = incidenceAngle;
+                // Calculate wall position (parametric t value)
+                const wallPosition = calculateWallPosition(hitPoint, wall);
+                // Check for grazing incidence
+                const isGrazing = incidenceAngle > GRAZING_THRESHOLD;
+                reflections.push({
+                    wall,
+                    wallId,
+                    hitPoint,
+                    incidenceAngle,
+                    reflectionAngle,
+                    incomingDirection,
+                    outgoingDirection,
+                    wallNormal,
+                    reflectionOrder,
+                    wallPosition,
+                    cumulativeDistance,
+                    incomingSegmentLength: segmentLength,
+                    isGrazing
+                });
+            }
+        }
+        return {
+            listenerPosition,
+            sourcePosition,
+            totalPathLength,
+            reflectionCount: reflections.length,
+            reflections,
+            segments,
+            simplePath: path
+        };
     }
     /** Recursive function for going through all beams */
     findPaths(listener, node) {
