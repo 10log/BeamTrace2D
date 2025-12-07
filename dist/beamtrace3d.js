@@ -42,7 +42,7 @@ export { buildBeamTree3D, collectNodesAtOrder, getNodeOrder, getReflectionPath, 
 export { detectFailPlane, propagateFailPlane, isListenerBehindFailPlane, distanceToFailPlane, minDistanceToFailPlanes, updateNodeFailPlane, clearNodeFailPlane, hasFailPlane } from './optimization/failplane3d';
 export { createBuckets3D, isInsideSkipSphere, checkSkipSphere, createSkipSphere, invalidateSkipSphere, clearBucketFailPlanes, updateBucketSkipSphere, processBucketSkipSphere, getSkipSphereStats, DEFAULT_BUCKET_SIZE_3D } from './optimization/skipsphere3d';
 // Solver
-export { OptimizedSolver3D, computePathLength, computeArrivalTime, getPathReflectionOrder } from './solver/solver3d';
+export { OptimizedSolver3D, computePathLength, computeArrivalTime, getPathReflectionOrder, convertToDetailedPath3D } from './solver/solver3d';
 // Convenience aliases
 import { Vector3 } from './core/vector3';
 import { createShoeboxRoom } from './geometry/polygon3d';
@@ -83,6 +83,22 @@ export class Solver3D {
     getPaths(listener) {
         const pos = Array.isArray(listener) ? listener : listener.position;
         return this.solver.getPaths(pos);
+    }
+    /**
+     * Get all valid reflection paths with detailed information about each reflection.
+     *
+     * This method returns the same paths as getPaths() but with additional details:
+     * - Angle of incidence and reflection at each surface
+     * - Surface normal vectors
+     * - Segment lengths and cumulative distances
+     * - Grazing incidence detection
+     *
+     * @param listener - Listener position or Listener3D object
+     * @returns Array of detailed reflection paths
+     */
+    getDetailedPaths(listener) {
+        const pos = Array.isArray(listener) ? listener : listener.position;
+        return this.solver.getDetailedPaths(pos);
     }
     /**
      * Get performance metrics from last getPaths() call

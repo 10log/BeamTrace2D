@@ -1051,6 +1051,22 @@ var OptimizedSolver3D = class {
     return validPaths;
   }
   /**
+   * Get all valid reflection paths with detailed information about each reflection.
+   *
+   * This method returns the same paths as getPaths() but with additional details:
+   * - Angle of incidence and reflection at each surface
+   * - Surface normal vectors
+   * - Segment lengths and cumulative distances
+   * - Grazing incidence detection
+   *
+   * @param listenerPos - Position of the listener
+   * @returns Array of detailed reflection paths
+   */
+  getDetailedPaths(listenerPos2) {
+    const simplePaths = this.getPaths(listenerPos2);
+    return simplePaths.map((path) => convertToDetailedPath3D(path, this.polygons));
+  }
+  /**
    * Validate the direct path from listener to source
    */
   validateDirectPath(listenerPos2) {
@@ -1238,6 +1254,84 @@ var OptimizedSolver3D = class {
 function getPathReflectionOrder(path) {
   return path.filter((p) => p.polygonId !== null).length;
 }
+var GRAZING_THRESHOLD_3D = 0.05;
+function calculateIncidenceAngle3D(incomingDir, surfaceNormal) {
+  const cosAngle = Math.abs(Vector3.dot(Vector3.negate(incomingDir), surfaceNormal));
+  const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+  return Math.acos(clampedCos);
+}
+function getOrientedNormal3D(polygon, incomingDir) {
+  const normal = Plane3D.normal(polygon.plane);
+  const dot = Vector3.dot(incomingDir, normal);
+  if (dot > 0) {
+    return Vector3.negate(normal);
+  }
+  return Vector3.clone(normal);
+}
+function convertToDetailedPath3D(path, polygons) {
+  if (path.length < 2) {
+    throw new Error("Path must have at least 2 points (listener and source)");
+  }
+  const listenerPosition = Vector3.clone(path[0].position);
+  const sourcePosition = Vector3.clone(path[path.length - 1].position);
+  const reflections = [];
+  const segments = [];
+  let cumulativeDistance = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    const startPoint = path[i].position;
+    const endPoint = path[i + 1].position;
+    const segmentLength = Vector3.distance(startPoint, endPoint);
+    segments.push({
+      startPoint: Vector3.clone(startPoint),
+      endPoint: Vector3.clone(endPoint),
+      length: segmentLength,
+      segmentIndex: i
+    });
+    const endPolygonId = path[i + 1].polygonId;
+    if (endPolygonId !== null) {
+      const polygon = polygons[endPolygonId];
+      const hitPoint = path[i + 1].position;
+      const incomingDirection = Vector3.normalize(Vector3.subtract(hitPoint, startPoint));
+      const nextPoint = path[i + 2]?.position;
+      let outgoingDirection;
+      if (nextPoint) {
+        outgoingDirection = Vector3.normalize(Vector3.subtract(nextPoint, hitPoint));
+      } else {
+        outgoingDirection = Vector3.reflect(incomingDirection, Plane3D.normal(polygon.plane));
+      }
+      const surfaceNormal = getOrientedNormal3D(polygon, incomingDirection);
+      const incidenceAngle = calculateIncidenceAngle3D(incomingDirection, surfaceNormal);
+      const reflectionAngle = incidenceAngle;
+      cumulativeDistance += segmentLength;
+      const isGrazing = Math.abs(incidenceAngle - Math.PI / 2) < GRAZING_THRESHOLD_3D;
+      reflections.push({
+        polygon,
+        polygonId: endPolygonId,
+        hitPoint: Vector3.clone(hitPoint),
+        incidenceAngle,
+        reflectionAngle,
+        incomingDirection,
+        outgoingDirection,
+        surfaceNormal,
+        reflectionOrder: reflections.length + 1,
+        cumulativeDistance,
+        incomingSegmentLength: segmentLength,
+        isGrazing
+      });
+    } else {
+      cumulativeDistance += segmentLength;
+    }
+  }
+  return {
+    listenerPosition,
+    sourcePosition,
+    totalPathLength: cumulativeDistance,
+    reflectionCount: reflections.length,
+    reflections,
+    segments,
+    simplePath: path
+  };
+}
 
 // dist/beamtrace3d.js
 var Source3D = class {
@@ -1267,6 +1361,22 @@ var Solver3D = class {
   getPaths(listener2) {
     const pos = Array.isArray(listener2) ? listener2 : listener2.position;
     return this.solver.getPaths(pos);
+  }
+  /**
+   * Get all valid reflection paths with detailed information about each reflection.
+   *
+   * This method returns the same paths as getPaths() but with additional details:
+   * - Angle of incidence and reflection at each surface
+   * - Surface normal vectors
+   * - Segment lengths and cumulative distances
+   * - Grazing incidence detection
+   *
+   * @param listener - Listener position or Listener3D object
+   * @returns Array of detailed reflection paths
+   */
+  getDetailedPaths(listener2) {
+    const pos = Array.isArray(listener2) ? listener2 : listener2.position;
+    return this.solver.getDetailedPaths(pos);
   }
   /**
    * Get performance metrics from last getPaths() call

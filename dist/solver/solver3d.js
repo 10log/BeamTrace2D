@@ -9,6 +9,7 @@
  */
 import { Vector3 } from '../core/vector3';
 import { Polygon3D } from '../geometry/polygon3d';
+import { Plane3D } from '../core/plane3d';
 import { buildBSP, rayTraceBSP } from '../structures/bsp3d';
 import { buildBeamTree3D, clearFailPlanes } from '../structures/beamtree3d';
 import { detectFailPlane, isListenerBehindFailPlane } from '../optimization/failplane3d';
@@ -112,6 +113,22 @@ export class OptimizedSolver3D {
         }
         this.metrics.validPathCount = validPaths.length;
         return validPaths;
+    }
+    /**
+     * Get all valid reflection paths with detailed information about each reflection.
+     *
+     * This method returns the same paths as getPaths() but with additional details:
+     * - Angle of incidence and reflection at each surface
+     * - Surface normal vectors
+     * - Segment lengths and cumulative distances
+     * - Grazing incidence detection
+     *
+     * @param listenerPos - Position of the listener
+     * @returns Array of detailed reflection paths
+     */
+    getDetailedPaths(listenerPos) {
+        const simplePaths = this.getPaths(listenerPos);
+        return simplePaths.map(path => convertToDetailedPath3D(path, this.polygons));
     }
     /**
      * Validate the direct path from listener to source
@@ -335,5 +352,119 @@ export function computeArrivalTime(path, speedOfSound = 343) {
 export function getPathReflectionOrder(path) {
     // Count points with non-null polygonId (reflection points)
     return path.filter(p => p.polygonId !== null).length;
+}
+// ============================================================
+// Helper functions for detailed path information
+// ============================================================
+/** Threshold angle (radians from 90°) for marking reflections as grazing */
+const GRAZING_THRESHOLD_3D = 0.05; // ~3 degrees from grazing
+/**
+ * Calculate the incidence angle between an incoming direction and surface normal.
+ * Returns angle in radians (0 = perpendicular to surface, π/2 = grazing).
+ */
+function calculateIncidenceAngle3D(incomingDir, surfaceNormal) {
+    // The incoming direction points toward the surface, so we use -incomingDir
+    // Angle of incidence is measured from the normal
+    const cosAngle = Math.abs(Vector3.dot(Vector3.negate(incomingDir), surfaceNormal));
+    // Clamp to [-1, 1] to handle floating point errors
+    const clampedCos = Math.max(-1, Math.min(1, cosAngle));
+    return Math.acos(clampedCos);
+}
+/**
+ * Get the surface normal oriented toward the incoming ray.
+ * This ensures the normal always points toward the side the ray came from.
+ */
+function getOrientedNormal3D(polygon, incomingDir) {
+    const normal = Plane3D.normal(polygon.plane);
+    // If ray is coming from the back side, flip the normal
+    const dot = Vector3.dot(incomingDir, normal);
+    if (dot > 0) {
+        return Vector3.negate(normal);
+    }
+    return Vector3.clone(normal);
+}
+/**
+ * Convert a simple reflection path to a detailed path with full reflection information.
+ *
+ * @param path - The simple reflection path from getPaths()
+ * @param polygons - The room polygons (to look up polygon info by ID)
+ * @returns Detailed path information including angles, normals, and distances
+ */
+export function convertToDetailedPath3D(path, polygons) {
+    if (path.length < 2) {
+        throw new Error('Path must have at least 2 points (listener and source)');
+    }
+    const listenerPosition = Vector3.clone(path[0].position);
+    const sourcePosition = Vector3.clone(path[path.length - 1].position);
+    const reflections = [];
+    const segments = [];
+    let cumulativeDistance = 0;
+    // Process each segment and reflection
+    for (let i = 0; i < path.length - 1; i++) {
+        const startPoint = path[i].position;
+        const endPoint = path[i + 1].position;
+        // Calculate segment info
+        const segmentLength = Vector3.distance(startPoint, endPoint);
+        segments.push({
+            startPoint: Vector3.clone(startPoint),
+            endPoint: Vector3.clone(endPoint),
+            length: segmentLength,
+            segmentIndex: i
+        });
+        // If the end point is a reflection (not the source), calculate reflection details
+        const endPolygonId = path[i + 1].polygonId;
+        if (endPolygonId !== null) {
+            const polygon = polygons[endPolygonId];
+            const hitPoint = path[i + 1].position;
+            // Incoming direction (normalized)
+            const incomingDirection = Vector3.normalize(Vector3.subtract(hitPoint, startPoint));
+            // Get the next point to calculate outgoing direction
+            const nextPoint = path[i + 2]?.position;
+            let outgoingDirection;
+            if (nextPoint) {
+                outgoingDirection = Vector3.normalize(Vector3.subtract(nextPoint, hitPoint));
+            }
+            else {
+                // Shouldn't happen in valid paths, but handle gracefully
+                outgoingDirection = Vector3.reflect(incomingDirection, Plane3D.normal(polygon.plane));
+            }
+            // Surface normal oriented toward incoming ray
+            const surfaceNormal = getOrientedNormal3D(polygon, incomingDirection);
+            // Calculate angles
+            const incidenceAngle = calculateIncidenceAngle3D(incomingDirection, surfaceNormal);
+            const reflectionAngle = incidenceAngle; // Specular reflection
+            // Update cumulative distance (includes this segment)
+            cumulativeDistance += segmentLength;
+            // Check if grazing (angle close to 90°)
+            const isGrazing = Math.abs(incidenceAngle - Math.PI / 2) < GRAZING_THRESHOLD_3D;
+            reflections.push({
+                polygon,
+                polygonId: endPolygonId,
+                hitPoint: Vector3.clone(hitPoint),
+                incidenceAngle,
+                reflectionAngle,
+                incomingDirection,
+                outgoingDirection,
+                surfaceNormal,
+                reflectionOrder: reflections.length + 1,
+                cumulativeDistance,
+                incomingSegmentLength: segmentLength,
+                isGrazing
+            });
+        }
+        else {
+            // Final segment to source - just add to cumulative distance
+            cumulativeDistance += segmentLength;
+        }
+    }
+    return {
+        listenerPosition,
+        sourcePosition,
+        totalPathLength: cumulativeDistance,
+        reflectionCount: reflections.length,
+        reflections,
+        segments,
+        simplePath: path
+    };
 }
 //# sourceMappingURL=solver3d.js.map

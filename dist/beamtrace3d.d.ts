@@ -29,7 +29,7 @@
  */
 export { Vector3 } from './core/vector3';
 export { Plane3D } from './core/plane3d';
-export type { Point3D, PathPoint3D, ReflectionPath3D, PointClassification, PolygonClassification, FailPlaneType } from './core/types';
+export type { Point3D, PathPoint3D, ReflectionPath3D, ReflectionDetail3D, SegmentDetail3D, DetailedReflectionPath3D, PointClassification, PolygonClassification, FailPlaneType } from './core/types';
 export { Polygon3D, createShoeboxRoom, createQuad } from './geometry/polygon3d';
 export { splitPolygon, splitPolygons } from './geometry/polygon-split';
 export { clipPolygonByPlane, clipPolygonByPlanes, clipPolygonByFrustum, quickRejectPolygon, polygonMayIntersectVolume, clipRayByPlanes } from './geometry/clipping3d';
@@ -43,12 +43,12 @@ export { detectFailPlane, propagateFailPlane, isListenerBehindFailPlane, distanc
 export type { FailPlaneInfo } from './optimization/failplane3d';
 export { createBuckets3D, isInsideSkipSphere, checkSkipSphere, createSkipSphere, invalidateSkipSphere, clearBucketFailPlanes, updateBucketSkipSphere, processBucketSkipSphere, getSkipSphereStats, DEFAULT_BUCKET_SIZE_3D } from './optimization/skipsphere3d';
 export type { SkipSphere, Bucket3D, SkipSphereStatus, BucketProcessingResult, SkipSphereStats } from './optimization/skipsphere3d';
-export { OptimizedSolver3D, computePathLength, computeArrivalTime, getPathReflectionOrder } from './solver/solver3d';
+export { OptimizedSolver3D, computePathLength, computeArrivalTime, getPathReflectionOrder, convertToDetailedPath3D } from './solver/solver3d';
 export type { PerformanceMetrics3D, OptimizedSolver3DConfig, BeamVisualizationData } from './solver/solver3d';
 import { Vector3 } from './core/vector3';
 import { Polygon3D } from './geometry/polygon3d';
 import { OptimizedSolver3DConfig, BeamVisualizationData } from './solver/solver3d';
-import type { ReflectionPath3D } from './core/types';
+import type { ReflectionPath3D, DetailedReflectionPath3D } from './core/types';
 /**
  * 3D Sound source
  */
@@ -78,6 +78,19 @@ export declare class Solver3D {
      * Get all valid reflection paths to a listener
      */
     getPaths(listener: Listener3D | Vector3): ReflectionPath3D[];
+    /**
+     * Get all valid reflection paths with detailed information about each reflection.
+     *
+     * This method returns the same paths as getPaths() but with additional details:
+     * - Angle of incidence and reflection at each surface
+     * - Surface normal vectors
+     * - Segment lengths and cumulative distances
+     * - Grazing incidence detection
+     *
+     * @param listener - Listener position or Listener3D object
+     * @returns Array of detailed reflection paths
+     */
+    getDetailedPaths(listener: Listener3D | Vector3): DetailedReflectionPath3D[];
     /**
      * Get performance metrics from last getPaths() call
      */

@@ -8,7 +8,7 @@
  * "Accelerated beam tracing algorithm." Applied Acoustics, 70(1), 172-181.
  */
 import { Vector3 } from '../core/vector3';
-import { ReflectionPath3D } from '../core/types';
+import { ReflectionPath3D, DetailedReflectionPath3D } from '../core/types';
 import { Polygon3D } from '../geometry/polygon3d';
 /**
  * Performance metrics for the solver
@@ -71,6 +71,19 @@ export declare class OptimizedSolver3D {
      * @returns Array of valid reflection paths
      */
     getPaths(listenerPos: Vector3): ReflectionPath3D[];
+    /**
+     * Get all valid reflection paths with detailed information about each reflection.
+     *
+     * This method returns the same paths as getPaths() but with additional details:
+     * - Angle of incidence and reflection at each surface
+     * - Surface normal vectors
+     * - Segment lengths and cumulative distances
+     * - Grazing incidence detection
+     *
+     * @param listenerPos - Position of the listener
+     * @returns Array of detailed reflection paths
+     */
+    getDetailedPaths(listenerPos: Vector3): DetailedReflectionPath3D[];
     /**
      * Validate the direct path from listener to source
      */
@@ -137,4 +150,12 @@ export declare function computeArrivalTime(path: ReflectionPath3D, speedOfSound?
  * Get the reflection order of a path (number of reflections)
  */
 export declare function getPathReflectionOrder(path: ReflectionPath3D): number;
+/**
+ * Convert a simple reflection path to a detailed path with full reflection information.
+ *
+ * @param path - The simple reflection path from getPaths()
+ * @param polygons - The room polygons (to look up polygon info by ID)
+ * @returns Detailed path information including angles, normals, and distances
+ */
+export declare function convertToDetailedPath3D(path: ReflectionPath3D, polygons: Polygon3D[]): DetailedReflectionPath3D;
 //# sourceMappingURL=solver3d.d.ts.map

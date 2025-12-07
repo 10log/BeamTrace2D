@@ -443,7 +443,7 @@ function calculateWallPosition(hitPoint, wall) {
     const t = (pointDx * wallDx + pointDy * wallDy) / wallLengthSq;
     return Math.max(0, Math.min(1, t));
 }
-/** Threshold angle (in radians) for grazing incidence detection - within 5° of 90° */
+/** Threshold angle (in radians) for grazing incidence detection - angle from normal > 85° (i.e., within 5° of parallel to surface) */
 const GRAZING_THRESHOLD = Math.PI / 2 - (5 * Math.PI / 180);
 /** Mirrors point p0 along line defined by p1 and p2 */
 function pointMirror(p0, p1, p2) {
