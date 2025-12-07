@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Wall, Source, Listener, Solver, DetailedReflectionPath, ReflectionDetail } from '../beamtrace2d';
+import { Wall, Source, Listener, Solver } from '../beamtrace2d';
 
 describe('BeamTrace2D', () => {
   describe('Wall', () => {
