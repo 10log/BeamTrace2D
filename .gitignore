@@ -3,3 +3,6 @@ npm-debug.log
 dist/
 .claude/settings.local.json
 CLAUDE.md
+dist/main3d.bundle.js
+dist/main3d.bundle.js
+dist/main3d.js.map
