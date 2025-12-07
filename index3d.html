@@ -276,7 +276,13 @@
   </div>
 
   <div id="orderControl">
-    <span>Reflection Order:</span>
+    <span>Room:</span>
+    <select id="roomSelect" style="background: rgba(136, 204, 255, 0.3); border: 1px solid #88ccff; color: white; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px;">
+      <option value="concord" style="background: #1a1a2e; color: white;">Concord Hall</option>
+      <option value="shoebox" style="background: #1a1a2e; color: white;">Shoebox</option>
+      <option value="auditorium" style="background: #1a1a2e; color: white;">Auditorium</option>
+    </select>
+    <span style="margin-left: 20px;">Reflection Order:</span>
     <button id="orderDown">-</button>
     <span class="order-value" id="orderValue">3</span>
     <button id="orderUp">+</button>
