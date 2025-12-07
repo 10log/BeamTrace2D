@@ -27,6 +27,63 @@ export type Point = [number, number];
 export type PathPoint = [number, number, number | null];
 /** Complete reflection path from listener to source */
 export type ReflectionPath = PathPoint[];
+/** Detailed information about a single reflection point */
+export interface ReflectionDetail {
+    /** The wall that was hit */
+    wall: Wall;
+    /** Index of the wall in the walls array */
+    wallId: number;
+    /** Point where the reflection occurred [x, y] */
+    hitPoint: Point;
+    /** Angle of incidence in radians (relative to wall normal) */
+    incidenceAngle: number;
+    /** Angle of reflection in radians (relative to wall normal, equals incidence angle for specular reflection) */
+    reflectionAngle: number;
+    /** Incoming ray direction vector (normalized) [x, y] - from previous point to hit point */
+    incomingDirection: Point;
+    /** Outgoing ray direction vector (normalized) [x, y] - from hit point to next point */
+    outgoingDirection: Point;
+    /** Wall normal vector (normalized) [x, y] - pointing toward the side the ray came from */
+    wallNormal: Point;
+    /** Which reflection this is in the path (1 = first reflection, 2 = second, etc.) */
+    reflectionOrder: number;
+    /** Parametric position along the wall (0 = p1, 1 = p2) */
+    wallPosition: number;
+    /** Distance traveled before this reflection (cumulative path length up to this point) */
+    cumulativeDistance: number;
+    /** Distance of the incoming segment (from previous point to this hit point) */
+    incomingSegmentLength: number;
+    /** True if angle is very close to 90° (grazing incidence, may be numerically unstable) */
+    isGrazing: boolean;
+}
+/** Information about a single segment in the path */
+export interface SegmentDetail {
+    /** Start point of this segment */
+    startPoint: Point;
+    /** End point of this segment */
+    endPoint: Point;
+    /** Length of this segment */
+    length: number;
+    /** Segment index (0 = first segment from listener) */
+    segmentIndex: number;
+}
+/** Detailed reflection path with complete information about each reflection */
+export interface DetailedReflectionPath {
+    /** Start point (listener position) */
+    listenerPosition: Point;
+    /** End point (source position) */
+    sourcePosition: Point;
+    /** Total path length */
+    totalPathLength: number;
+    /** Number of reflections */
+    reflectionCount: number;
+    /** Detailed information about each reflection, in order from listener to source */
+    reflections: ReflectionDetail[];
+    /** Information about each segment in the path */
+    segments: SegmentDetail[];
+    /** The original simple path representation */
+    simplePath: ReflectionPath;
+}
 /** Wall segment defined by two endpoints */
 export declare class Wall {
     p1: Point;
@@ -66,6 +123,13 @@ export declare class Solver {
     constructor(walls: Wall[], source: Source, reflectionOrder?: number);
     /** Get all valid reflection paths from source to listener */
     getPaths(listener: Listener): ReflectionPath[];
+    /**
+     * Get detailed information about all valid reflection paths from source to listener.
+     * Returns comprehensive data including wall references, hit points, and angles.
+     */
+    getDetailedPaths(listener: Listener): DetailedReflectionPath[];
+    /** Convert a simple ReflectionPath to a DetailedReflectionPath */
+    private convertToDetailedPath;
     /** Recursive function for going through all beams */
     private findPaths;
     /** Traverse the beam at the given node recursively while testing for intersections */
