@@ -35,7 +35,7 @@ export { Polygon3D, createShoeboxRoom, createQuad } from './geometry/polygon3d';
 export { splitPolygon, splitPolygons } from './geometry/polygon-split';
 export { clipPolygonByPlane, clipPolygonByPlanes, clipPolygonByFrustum, quickRejectPolygon, polygonMayIntersectVolume, clipRayByPlanes } from './geometry/clipping3d';
 // Structures
-export { buildBSP, rayTraceBSP, rayOccluded, rayTraceAll, countNodes, treeDepth } from './structures/bsp3d';
+export { buildBSP, rayTraceBSP, rayTraceBSPMultiIgnore, rayOccluded, rayTraceAll, countNodes, treeDepth, setBSPDebug } from './structures/bsp3d';
 export { createBeam3D, constructBeamBoundaryPlanes, isPointInBeam, findBeamViolation, distanceToBeamBoundary, mirrorPointAcrossPolygon, polygonMayBeInBeam, isPolygonFacingSource, beamSolidAngle } from './structures/beam3d';
 export { buildBeamTree3D, collectNodesAtOrder, getNodeOrder, getReflectionPath, countBeamNodes, getBeamTreeStats, clearFailPlanes, iterateNodes } from './structures/beamtree3d';
 // Optimization
@@ -129,6 +129,14 @@ export class Solver3D {
      */
     getBeamsForVisualization(maxOrder) {
         return this.solver.getBeamsForVisualization(maxOrder);
+    }
+    /**
+     * Debug a specific beam path by polygon IDs
+     * Logs detailed information about the path validation process
+     */
+    debugBeamPath(listener, polygonPath) {
+        const pos = Array.isArray(listener) ? listener : listener.position;
+        this.solver.debugBeamPath(pos, polygonPath);
     }
 }
 /**

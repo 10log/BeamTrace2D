@@ -372,8 +372,10 @@ const SHOEBOX_HEIGHT = 3;
 const MIN_REFLECTION_ORDER = 0;
 const MAX_REFLECTION_ORDER = 6;
 let currentReflectionOrder = 3;
-// Visualization mode: 'paths' (rays) or 'beams' (cones)
+// Visualization mode: 'paths' (rays) or 'sources' (virtual sources as image-source method)
 let visualizationMode = 'paths';
+// Whether to show all virtual sources (including those without valid paths)
+let showAllVirtualSources = false;
 // Colors for different reflection orders
 const PATH_COLORS = [
     0x00ff00, // Direct (green)
@@ -759,6 +761,17 @@ const pathsGroup = new THREE.Group();
 scene.add(pathsGroup);
 const beamsGroup = new THREE.Group();
 scene.add(beamsGroup);
+// Group for highlighted polygons (shown when virtual source is selected)
+const highlightGroup = new THREE.Group();
+scene.add(highlightGroup);
+// Map from virtual source mesh to beam data for click detection
+const virtualSourceMap = new Map();
+// Map from path mesh (tubes/spheres) to path data for click detection
+const pathMeshMap = new Map();
+// Currently selected virtual source
+let selectedVirtualSource = null;
+// Currently selected path
+let selectedPath = null;
 function clearVisualization() {
     // Clear paths
     while (pathsGroup.children.length > 0) {
@@ -786,6 +799,28 @@ function clearVisualization() {
                 mat.dispose();
         }
     }
+    // Clear highlights
+    clearHighlights();
+    // Clear virtual source mapping
+    virtualSourceMap.clear();
+    selectedVirtualSource = null;
+    // Clear path mapping
+    pathMeshMap.clear();
+    selectedPath = null;
+}
+function clearHighlights() {
+    while (highlightGroup.children.length > 0) {
+        const child = highlightGroup.children[0];
+        highlightGroup.remove(child);
+        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+            child.geometry?.dispose();
+            const mat = child.material;
+            if (Array.isArray(mat))
+                mat.forEach(m => m.dispose());
+            else if (mat)
+                mat.dispose();
+        }
+    }
 }
 function updatePaths() {
     clearVisualization();
@@ -797,12 +832,10 @@ function updatePaths() {
     const metrics = solver.getMetrics();
     // Draw based on visualization mode
     const renderStart = performance.now();
-    if (visualizationMode === 'beams') {
-        // Draw beam cones
+    if (visualizationMode === 'sources') {
+        // Draw virtual sources (image-source method visualization)
         const beams = solver.getBeamsForVisualization(currentReflectionOrder);
-        for (const beam of beams) {
-            drawBeamCone(beam);
-        }
+        drawVirtualSources(beams);
     }
     else {
         // Draw ray paths (default)
@@ -821,84 +854,288 @@ function drawPath(path) {
     const color = PATH_COLORS[colorIndex];
     // Create points array
     const points = path.map(p => btToThree(p.position));
-    // Create line geometry
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    // Line material with varying opacity based on order
+    // Opacity based on order
     const opacity = Math.max(0.3, 0.8 - order * 0.15);
-    const material = new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity,
-        linewidth: 2 // Note: linewidth > 1 only works on some systems
-    });
-    const line = new THREE.Line(geometry, material);
-    pathsGroup.add(line);
-    // Add small spheres at reflection points
+    // Draw each segment as a clickable tube (cylinder)
+    for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const segLen = start.distanceTo(end);
+        const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        // Create cylinder for the segment (thin tube)
+        const cylGeom = new THREE.CylinderGeometry(0.015, 0.015, segLen, 6);
+        const cylMat = new THREE.MeshBasicMaterial({
+            color,
+            transparent: true,
+            opacity
+        });
+        const cyl = new THREE.Mesh(cylGeom, cylMat);
+        // Position and orient the cylinder
+        cyl.position.copy(midPoint);
+        const direction = new THREE.Vector3().subVectors(end, start).normalize();
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+        cyl.setRotationFromQuaternion(quaternion);
+        pathsGroup.add(cyl);
+        // Register for click detection
+        pathMeshMap.set(cyl, path);
+    }
+    // Add small spheres at reflection points (also clickable)
     for (let i = 1; i < path.length - 1; i++) {
-        const pointGeom = new THREE.SphereGeometry(0.03, 8, 8);
+        const pointGeom = new THREE.SphereGeometry(0.04, 8, 8);
         const pointMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
         const pointMesh = new THREE.Mesh(pointGeom, pointMat);
         pointMesh.position.copy(btToThree(path[i].position));
         pathsGroup.add(pointMesh);
+        // Register for click detection
+        pathMeshMap.set(pointMesh, path);
     }
 }
 /**
- * Draw a beam as a cone from virtual source through aperture polygon
+ * Check if a beam has a valid path to the current listener position.
+ * Returns true if there's a matching path in the solver results.
  */
-function drawBeamCone(beam) {
-    const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
-    const color = PATH_COLORS[colorIndex];
-    const opacity = Math.max(0.08, 0.2 - beam.reflectionOrder * 0.03);
-    const vs = btToThree(beam.virtualSource);
-    const apertureVerts = beam.apertureVertices.map(v => btToThree(v));
-    // Draw edges from virtual source to each aperture vertex
-    for (let i = 0; i < apertureVerts.length; i++) {
-        const edgeGeom = new THREE.BufferGeometry().setFromPoints([vs, apertureVerts[i]]);
-        const edgeMat = new THREE.LineBasicMaterial({
-            color,
-            transparent: true,
-            opacity: opacity * 2
-        });
-        beamsGroup.add(new THREE.Line(edgeGeom, edgeMat));
+function beamHasValidPath(beam, paths) {
+    const polygonPath = beam.polygonPath;
+    if (!polygonPath || polygonPath.length === 0)
+        return false;
+    const targetOrder = beam.reflectionOrder;
+    for (const path of paths) {
+        const pathOrder = path.length - 2;
+        if (pathOrder !== targetOrder)
+            continue;
+        // Check if the polygon sequence matches (in reverse order)
+        let matches = true;
+        for (let i = 0; i < polygonPath.length; i++) {
+            const pathIndex = pathOrder - i;
+            const pathPolygonId = path[pathIndex].polygonId;
+            if (pathPolygonId !== polygonPath[i]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches)
+            return true;
     }
-    // Draw aperture polygon outline
-    const apertureOutline = [...apertureVerts, apertureVerts[0]];
-    const outlineGeom = new THREE.BufferGeometry().setFromPoints(apertureOutline);
-    const outlineMat = new THREE.LineBasicMaterial({
-        color,
-        transparent: true,
-        opacity: opacity * 3
+    return false;
+}
+/**
+ * Draw virtual sources as spheres - standard image-source method visualization.
+ * Each virtual source represents a mirrored image of the real source across reflecting surfaces.
+ * This is the common visualization used in architectural acoustics literature.
+ * When showAllVirtualSources is false, only virtual sources with valid paths are shown.
+ */
+function drawVirtualSources(beams) {
+    // Get current paths to determine which virtual sources are valid
+    const paths = solver.getPaths(listener);
+    // Also draw the real source position with a label
+    const realSourcePos = btToThree(sourcePos);
+    const realSourceGeom = new THREE.SphereGeometry(0.18, 16, 16);
+    const realSourceMat = new THREE.MeshStandardMaterial({
+        color: 0xff4444,
+        emissive: 0xff2222,
+        emissiveIntensity: 0.5,
+        roughness: 0.3,
+        metalness: 0.5
     });
-    beamsGroup.add(new THREE.Line(outlineGeom, outlineMat));
-    // Draw triangular faces of the cone (from virtual source to each aperture edge)
-    for (let i = 0; i < apertureVerts.length; i++) {
-        const next = (i + 1) % apertureVerts.length;
-        const v0 = vs;
-        const v1 = apertureVerts[i];
-        const v2 = apertureVerts[next];
-        const faceGeom = new THREE.BufferGeometry();
-        const vertices = new Float32Array([
-            v0.x, v0.y, v0.z,
-            v1.x, v1.y, v1.z,
-            v2.x, v2.y, v2.z
-        ]);
-        faceGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-        faceGeom.computeVertexNormals();
-        const faceMat = new THREE.MeshBasicMaterial({
+    const realSourceMesh = new THREE.Mesh(realSourceGeom, realSourceMat);
+    realSourceMesh.position.copy(realSourcePos);
+    beamsGroup.add(realSourceMesh);
+    // Size decreases with reflection order for visual clarity
+    const baseSphereRadius = 0.12;
+    for (const beam of beams) {
+        const hasValidPath = beamHasValidPath(beam, paths);
+        // Skip virtual sources without valid paths unless showAllVirtualSources is enabled
+        if (!hasValidPath && !showAllVirtualSources) {
+            continue;
+        }
+        const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
+        const color = PATH_COLORS[colorIndex];
+        // Sphere size decreases with order
+        const radius = baseSphereRadius * Math.pow(0.85, beam.reflectionOrder - 1);
+        // Opacity decreases with order
+        const opacity = Math.max(0.4, 1.0 - beam.reflectionOrder * 0.15);
+        const vs = btToThree(beam.virtualSource);
+        // Draw virtual source sphere
+        const vsGeom = new THREE.SphereGeometry(radius, 12, 12);
+        const vsMat = new THREE.MeshStandardMaterial({
             color,
+            emissive: color,
+            emissiveIntensity: 0.3,
             transparent: true,
             opacity,
-            side: THREE.DoubleSide,
-            depthWrite: false
+            roughness: 0.5,
+            metalness: 0.3
         });
-        beamsGroup.add(new THREE.Mesh(faceGeom, faceMat));
+        const vsMesh = new THREE.Mesh(vsGeom, vsMat);
+        vsMesh.position.copy(vs);
+        beamsGroup.add(vsMesh);
+        // Register this mesh for click detection
+        virtualSourceMap.set(vsMesh, beam);
     }
-    // Draw virtual source as small sphere
-    const vsGeom = new THREE.SphereGeometry(0.05, 8, 8);
-    const vsMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
-    const vsMesh = new THREE.Mesh(vsGeom, vsMat);
-    vsMesh.position.copy(vs);
-    beamsGroup.add(vsMesh);
+}
+/**
+ * Show the ray path for a selected virtual source.
+ * Displays both:
+ * 1. The "unfolded" path from virtual source to listener (dashed)
+ * 2. The actual ray path inside the room with reflections (solid)
+ */
+function highlightSelectedPolygon(beam) {
+    clearHighlights();
+    const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
+    const color = PATH_COLORS[colorIndex];
+    const vs = btToThree(beam.virtualSource);
+    const listenerThree = btToThree(listenerPos);
+    // Draw dashed line from virtual source to listener (the "unfolded" path)
+    const unfoldedLineGeom = new THREE.BufferGeometry().setFromPoints([vs, listenerThree]);
+    const unfoldedLineMat = new THREE.LineDashedMaterial({
+        color,
+        transparent: true,
+        opacity: 0.4,
+        dashSize: 0.3,
+        gapSize: 0.15
+    });
+    const unfoldedLine = new THREE.Line(unfoldedLineGeom, unfoldedLineMat);
+    unfoldedLine.computeLineDistances();
+    highlightGroup.add(unfoldedLine);
+    // Also draw a larger highlight sphere on the virtual source
+    const highlightGeom = new THREE.SphereGeometry(0.18, 16, 16);
+    const highlightMat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.4
+    });
+    const highlightMesh = new THREE.Mesh(highlightGeom, highlightMat);
+    highlightMesh.position.copy(vs);
+    highlightGroup.add(highlightMesh);
+    // Find and draw the actual ray path inside the room
+    const paths = solver.getPaths(listener);
+    const polygonPath = beam.polygonPath;
+    if (!polygonPath || polygonPath.length === 0) {
+        return;
+    }
+    // Find the matching path - look for a path with the same reflection order
+    // that reflects off the same polygons in sequence
+    const targetOrder = beam.reflectionOrder;
+    for (const path of paths) {
+        // Path structure: [listener, reflectionN, reflectionN-1, ..., reflection1, source]
+        // (built from leaf to root, so highest-order reflection comes first)
+        // So a path with N reflections has length N+2
+        const pathOrder = path.length - 2;
+        if (pathOrder !== targetOrder)
+            continue;
+        // Check if the polygon sequence matches
+        // polygonPath is [poly0, poly1, ..., polyN] (first to last reflection, root to leaf)
+        // path is [listener, polyN, polyN-1, ..., poly0, source] (leaf to root order)
+        // So we need to compare in reverse: polygonPath[i] should match path[pathOrder - i].polygonId
+        let matches = true;
+        for (let i = 0; i < polygonPath.length; i++) {
+            const pathIndex = pathOrder - i; // Index of reflection point in path (1-based from listener)
+            const pathPolygonId = path[pathIndex].polygonId;
+            if (pathPolygonId !== polygonPath[i]) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            // Draw the actual ray path inside the room as thick tube segments
+            // Color each segment by its reflection order
+            const points = path.map(p => btToThree(p.position));
+            // Path is [listener, refl_N, refl_{N-1}, ..., refl_1, source]
+            // Segment 0: listener -> refl_N (Nth order reflection segment)
+            // Segment 1: refl_N -> refl_{N-1} ((N-1)th order segment)
+            // ...
+            // Last segment: refl_1 -> source (1st order segment - from source to first reflection)
+            const numReflections = path.length - 2;
+            // Draw each segment as a cylinder with color based on reflection order
+            for (let i = 0; i < points.length - 1; i++) {
+                const start = points[i];
+                const end = points[i + 1];
+                const segLen = start.distanceTo(end);
+                const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+                // Determine the reflection order for this segment
+                // Segment i connects point i to point i+1
+                // The "order" of a segment is determined by how many reflections remain after it
+                const segmentOrder = numReflections - i;
+                // Use white for the first segment (source to first reflection), otherwise use order color
+                const segColor = (segmentOrder === 0)
+                    ? 0xffffff
+                    : PATH_COLORS[Math.min(segmentOrder, PATH_COLORS.length - 1)];
+                const cylGeom = new THREE.CylinderGeometry(0.025, 0.025, segLen, 8);
+                const cylMat = new THREE.MeshBasicMaterial({ color: segColor });
+                const cyl = new THREE.Mesh(cylGeom, cylMat);
+                // Position and orient the cylinder
+                cyl.position.copy(midPoint);
+                const direction = new THREE.Vector3().subVectors(end, start).normalize();
+                const quaternion = new THREE.Quaternion();
+                quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+                cyl.setRotationFromQuaternion(quaternion);
+                highlightGroup.add(cyl);
+            }
+            // Add spheres at reflection points, colored by their order
+            for (let i = 1; i < path.length - 1; i++) {
+                // Point i is the (numReflections - i + 1)th reflection point
+                const pointOrder = numReflections - i + 1;
+                const pointColorIndex = Math.min(pointOrder, PATH_COLORS.length - 1);
+                const pointColor = PATH_COLORS[pointColorIndex];
+                const pointGeom = new THREE.SphereGeometry(0.08, 12, 12);
+                const pointMat = new THREE.MeshBasicMaterial({ color: pointColor });
+                const pointMesh = new THREE.Mesh(pointGeom, pointMat);
+                pointMesh.position.copy(btToThree(path[i].position));
+                highlightGroup.add(pointMesh);
+            }
+            return;
+        }
+    }
+}
+/**
+ * Highlight a clicked path in paths mode.
+ * Draws thicker, brighter segments and spheres at reflection points.
+ */
+function highlightPath(path) {
+    clearHighlights();
+    const order = getPathReflectionOrder(path);
+    const colorIndex = Math.min(order, PATH_COLORS.length - 1);
+    const color = PATH_COLORS[colorIndex];
+    const points = path.map(p => btToThree(p.position));
+    const numReflections = path.length - 2;
+    // Draw each segment as a thick cylinder
+    for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const segLen = start.distanceTo(end);
+        const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        // Determine the reflection order for this segment
+        const segmentOrder = numReflections - i;
+        const segColor = (segmentOrder === 0)
+            ? 0xffffff
+            : PATH_COLORS[Math.min(segmentOrder, PATH_COLORS.length - 1)];
+        const cylGeom = new THREE.CylinderGeometry(0.03, 0.03, segLen, 8);
+        const cylMat = new THREE.MeshBasicMaterial({ color: segColor });
+        const cyl = new THREE.Mesh(cylGeom, cylMat);
+        // Position and orient the cylinder
+        cyl.position.copy(midPoint);
+        const direction = new THREE.Vector3().subVectors(end, start).normalize();
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+        cyl.setRotationFromQuaternion(quaternion);
+        highlightGroup.add(cyl);
+    }
+    // Add larger spheres at reflection points
+    for (let i = 1; i < path.length - 1; i++) {
+        const pointOrder = numReflections - i + 1;
+        const pointColorIndex = Math.min(pointOrder, PATH_COLORS.length - 1);
+        const pointColor = PATH_COLORS[pointColorIndex];
+        const pointGeom = new THREE.SphereGeometry(0.1, 12, 12);
+        const pointMat = new THREE.MeshBasicMaterial({ color: pointColor });
+        const pointMesh = new THREE.Mesh(pointGeom, pointMat);
+        pointMesh.position.copy(btToThree(path[i].position));
+        highlightGroup.add(pointMesh);
+    }
+    // Add highlight sphere at listener position
+    const listenerHighlight = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));
+    listenerHighlight.position.copy(btToThree(path[0].position));
+    highlightGroup.add(listenerHighlight);
 }
 // ============================================================================
 // UI Updates
@@ -1093,7 +1330,31 @@ function getHoveredObject() {
 }
 function updateCursor() {
     const hovered = getHoveredObject();
-    renderer.domElement.style.cursor = hovered ? 'grab' : 'default';
+    if (hovered) {
+        renderer.domElement.style.cursor = 'grab';
+        return;
+    }
+    // In sources mode, check for virtual source hover
+    if (visualizationMode === 'sources' && virtualSourceMap.size > 0) {
+        raycaster.setFromCamera(mouse, camera);
+        const virtualSourceMeshes = Array.from(virtualSourceMap.keys());
+        const vsIntersects = raycaster.intersectObjects(virtualSourceMeshes);
+        if (vsIntersects.length > 0) {
+            renderer.domElement.style.cursor = 'pointer';
+            return;
+        }
+    }
+    // In paths mode, check for path hover
+    if (visualizationMode === 'paths' && pathMeshMap.size > 0) {
+        raycaster.setFromCamera(mouse, camera);
+        const pathMeshes = Array.from(pathMeshMap.keys());
+        const pathIntersects = raycaster.intersectObjects(pathMeshes);
+        if (pathIntersects.length > 0) {
+            renderer.domElement.style.cursor = 'pointer';
+            return;
+        }
+    }
+    renderer.domElement.style.cursor = 'default';
 }
 // Optimized path update - skips UI for real-time dragging
 function updatePathsRealtime(skipUI = false) {
@@ -1105,11 +1366,9 @@ function updatePathsRealtime(skipUI = false) {
     smoothedComputeTime = smoothedComputeTime * (1 - TIMING_SMOOTHING) + solveTime * TIMING_SMOOTHING;
     // Draw based on visualization mode with timing
     const renderStart = performance.now();
-    if (visualizationMode === 'beams') {
+    if (visualizationMode === 'sources') {
         const beams = solver.getBeamsForVisualization(currentReflectionOrder);
-        for (const beam of beams) {
-            drawBeamCone(beam);
-        }
+        drawVirtualSources(beams);
     }
     else {
         for (const path of paths) {
@@ -1216,14 +1475,85 @@ renderer.domElement.addEventListener('mouseup', (event) => {
     controls.enabled = true;
     updateMousePosition(event);
     updateCursor();
-    // If we weren't dragging an object, check for floor click
+    // If we weren't dragging an object, check for clicks
     if (!wasDragging) {
         const dx = event.clientX - mouseDownPos.x;
         const dy = event.clientY - mouseDownPos.y;
         const didMove = Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD;
         if (!didMove) {
-            // Click on floor - move listener
             raycaster.setFromCamera(mouse, camera);
+            // In sources mode, check for virtual source clicks first
+            if (visualizationMode === 'sources') {
+                const virtualSourceMeshes = Array.from(virtualSourceMap.keys());
+                const vsIntersects = raycaster.intersectObjects(virtualSourceMeshes);
+                if (vsIntersects.length > 0) {
+                    const clickedMesh = vsIntersects[0].object;
+                    const beam = virtualSourceMap.get(clickedMesh);
+                    if (beam) {
+                        // Toggle selection - if already selected, deselect
+                        if (selectedVirtualSource === clickedMesh) {
+                            selectedVirtualSource = null;
+                            clearHighlights();
+                        }
+                        else {
+                            selectedVirtualSource = clickedMesh;
+                            highlightSelectedPolygon(beam);
+                            // Debug logging for clicked virtual source
+                            console.log('=== CLICKED VIRTUAL SOURCE ===');
+                            console.log(`Reflection order: ${beam.reflectionOrder}`);
+                            console.log(`Polygon path: [${beam.polygonPath.join(', ')}]`);
+                            console.log(`Virtual source: [${beam.virtualSource[0].toFixed(3)}, ${beam.virtualSource[1].toFixed(3)}, ${beam.virtualSource[2].toFixed(3)}]`);
+                            // Call solver debug method
+                            solver.debugBeamPath(listenerPos, beam.polygonPath);
+                        }
+                        return;
+                    }
+                }
+            }
+            // In paths mode, check for path clicks
+            if (visualizationMode === 'paths' && pathMeshMap.size > 0) {
+                const pathMeshes = Array.from(pathMeshMap.keys());
+                const pathIntersects = raycaster.intersectObjects(pathMeshes);
+                if (pathIntersects.length > 0) {
+                    const clickedMesh = pathIntersects[0].object;
+                    const path = pathMeshMap.get(clickedMesh);
+                    if (path) {
+                        // Extract polygon path from the ReflectionPath3D
+                        // Path structure: [listener, reflN, reflN-1, ..., refl1, source]
+                        // We want polygonIds from index 1 to length-2 (excluding listener and source)
+                        const polygonPath = [];
+                        for (let i = path.length - 2; i >= 1; i--) {
+                            const polygonId = path[i].polygonId;
+                            if (polygonId !== null) {
+                                polygonPath.push(polygonId);
+                            }
+                        }
+                        // Toggle selection
+                        if (selectedPath === path) {
+                            selectedPath = null;
+                            clearHighlights();
+                        }
+                        else {
+                            selectedPath = path;
+                            highlightPath(path);
+                            // Debug logging for clicked path
+                            const order = getPathReflectionOrder(path);
+                            console.log('=== CLICKED PATH ===');
+                            console.log(`Reflection order: ${order}`);
+                            console.log(`Polygon path: [${polygonPath.join(', ')}]`);
+                            console.log(`Path points:`);
+                            for (let i = 0; i < path.length; i++) {
+                                const p = path[i];
+                                console.log(`  [${i}] pos=[${p.position[0].toFixed(3)}, ${p.position[1].toFixed(3)}, ${p.position[2].toFixed(3)}], polygonId=${p.polygonId}`);
+                            }
+                            // Call solver debug method
+                            solver.debugBeamPath(listenerPos, polygonPath);
+                        }
+                        return;
+                    }
+                }
+            }
+            // Click on floor - move listener
             const intersects = raycaster.intersectObject(floor);
             if (intersects.length > 0) {
                 const point = intersects[0].point;
@@ -1305,16 +1635,35 @@ document.getElementById('orderDown')?.addEventListener('click', (e) => {
 });
 // Toggle visualization mode
 function toggleVisualizationMode() {
-    visualizationMode = visualizationMode === 'paths' ? 'beams' : 'paths';
+    visualizationMode = visualizationMode === 'paths' ? 'sources' : 'paths';
     const toggleBtn = document.getElementById('toggleView');
     if (toggleBtn) {
-        toggleBtn.textContent = visualizationMode === 'paths' ? 'Paths' : 'Beams';
+        toggleBtn.textContent = visualizationMode === 'paths' ? 'Paths' : 'Sources';
+    }
+    // Show/hide the "Show All" toggle based on visualization mode
+    const showAllLabel = document.getElementById('showAllLabel');
+    const showAllBtn = document.getElementById('toggleShowAll');
+    if (showAllLabel && showAllBtn) {
+        showAllLabel.style.display = visualizationMode === 'sources' ? 'inline' : 'none';
+        showAllBtn.style.display = visualizationMode === 'sources' ? 'inline' : 'none';
+    }
+    updatePaths();
+}
+function toggleShowAllVirtualSources() {
+    showAllVirtualSources = !showAllVirtualSources;
+    const toggleBtn = document.getElementById('toggleShowAll');
+    if (toggleBtn) {
+        toggleBtn.textContent = showAllVirtualSources ? 'On' : 'Off';
     }
     updatePaths();
 }
 document.getElementById('toggleView')?.addEventListener('click', (e) => {
     e.stopPropagation();
     toggleVisualizationMode();
+});
+document.getElementById('toggleShowAll')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleShowAllVirtualSources();
 });
 // Room selector handler
 document.getElementById('roomSelect')?.addEventListener('change', (e) => {

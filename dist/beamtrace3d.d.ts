@@ -33,7 +33,7 @@ export type { Point3D, PathPoint3D, ReflectionPath3D, ReflectionDetail3D, Segmen
 export { Polygon3D, createShoeboxRoom, createQuad } from './geometry/polygon3d';
 export { splitPolygon, splitPolygons } from './geometry/polygon-split';
 export { clipPolygonByPlane, clipPolygonByPlanes, clipPolygonByFrustum, quickRejectPolygon, polygonMayIntersectVolume, clipRayByPlanes } from './geometry/clipping3d';
-export { buildBSP, rayTraceBSP, rayOccluded, rayTraceAll, countNodes, treeDepth } from './structures/bsp3d';
+export { buildBSP, rayTraceBSP, rayTraceBSPMultiIgnore, rayOccluded, rayTraceAll, countNodes, treeDepth, setBSPDebug } from './structures/bsp3d';
 export type { BSPNode3D, RayHit3D } from './structures/bsp3d';
 export { createBeam3D, constructBeamBoundaryPlanes, isPointInBeam, findBeamViolation, distanceToBeamBoundary, mirrorPointAcrossPolygon, polygonMayBeInBeam, isPolygonFacingSource, beamSolidAngle } from './structures/beam3d';
 export type { Beam3D, BeamViolation } from './structures/beam3d';
@@ -111,6 +111,11 @@ export declare class Solver3D {
      * Get beam data for visualization
      */
     getBeamsForVisualization(maxOrder?: number): BeamVisualizationData[];
+    /**
+     * Debug a specific beam path by polygon IDs
+     * Logs detailed information about the path validation process
+     */
+    debugBeamPath(listener: Listener3D | Vector3, polygonPath: number[]): void;
 }
 /**
  * Create a simple shoebox room for testing

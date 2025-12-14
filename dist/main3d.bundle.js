@@ -731,8 +731,36 @@ function rayTraceBSP(origin, direction, node, tMin = 0, tMax = Infinity, ignoreI
   let hit = null;
   if (tSplit === null || tSplit < tMin) {
     hit = rayTraceBSP(origin, direction, near, tMin, tMax, ignoreId);
+    if (!hit && node.polygonId !== ignoreId) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    }
+    if (!hit) {
+      hit = rayTraceBSP(origin, direction, far, tMin, tMax, ignoreId);
+    }
   } else if (tSplit > tMax) {
     hit = rayTraceBSP(origin, direction, near, tMin, tMax, ignoreId);
+    if (!hit && node.polygonId !== ignoreId) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    }
+    if (!hit) {
+      hit = rayTraceBSP(origin, direction, far, tMin, tMax, ignoreId);
+    }
   } else {
     hit = rayTraceBSP(origin, direction, near, tMin, tSplit, ignoreId);
     if (!hit && node.polygonId !== ignoreId) {
@@ -749,6 +777,131 @@ function rayTraceBSP(origin, direction, node, tMin = 0, tMax = Infinity, ignoreI
     if (!hit) {
       hit = rayTraceBSP(origin, direction, far, tSplit, tMax, ignoreId);
     }
+  }
+  return hit;
+}
+var bspDebug = false;
+var bspDebugDepth = 0;
+function rayTraceBSPMultiIgnore(origin, direction, node, tMin, tMax, ignoreIds) {
+  if (!node)
+    return null;
+  const indent = "  ".repeat(bspDebugDepth);
+  const dOrigin = Plane3D.signedDistance(origin, node.plane);
+  const normal = Plane3D.normal(node.plane);
+  const dDir = Vector3.dot(normal, direction);
+  let near;
+  let far;
+  if (dOrigin >= 0) {
+    near = node.front;
+    far = node.back;
+  } else {
+    near = node.back;
+    far = node.front;
+  }
+  let tSplit = null;
+  if (Math.abs(dDir) > 1e-10) {
+    tSplit = -dOrigin / dDir;
+  }
+  if (bspDebug) {
+    console.log(`${indent}[BSP] Node ${node.polygonId}: dOrigin=${dOrigin.toFixed(3)}, dDir=${dDir.toFixed(3)}, tSplit=${tSplit?.toFixed(3) ?? "null"}, tMin=${tMin.toFixed(3)}, tMax=${tMax.toFixed(3)}`);
+  }
+  let hit = null;
+  if (tSplit === null || tSplit < tMin) {
+    if (bspDebug) {
+      console.log(`${indent}  Case: tSplit null or < tMin, checking near then far`);
+    }
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tMax, ignoreIds);
+    bspDebugDepth--;
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : "NO HIT"}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tMin, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  } else if (tSplit > tMax) {
+    if (bspDebug) {
+      console.log(`${indent}  Case: tSplit > tMax, checking near then far`);
+    }
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tMax, ignoreIds);
+    bspDebugDepth--;
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : "NO HIT"}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tMin, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  } else {
+    if (bspDebug) {
+      console.log(`${indent}  Case: ray crosses plane at tSplit=${tSplit.toFixed(3)}`);
+    }
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tSplit, ignoreIds);
+    bspDebugDepth--;
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : "NO HIT"}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tSplit, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  }
+  if (bspDebug && hit) {
+    console.log(`${indent}  RETURNING HIT: polygon ${hit.polygonId} at t=${hit.t.toFixed(3)}`);
   }
   return hit;
 }
@@ -1106,41 +1259,108 @@ var OptimizedSolver3D = class {
   /**
    * Traverse a beam from listener to source, building the reflection path
    */
-  traverseBeam(listenerPos2, node) {
+  traverseBeam(listenerPos2, node, debug = false) {
     const pathPoints = [
       { position: Vector3.clone(listenerPos2), polygonId: null }
     ];
+    const polygonPath = [];
+    let tempNode = node;
+    while (tempNode && tempNode.id !== -1) {
+      polygonPath.unshift(tempNode.id);
+      tempNode = tempNode.parent;
+    }
+    if (debug) {
+      console.log(`[traverseBeam] Exploring beam with polygonPath: [${polygonPath.join(", ")}]`);
+      console.log(`  Listener: [${listenerPos2[0].toFixed(3)}, ${listenerPos2[1].toFixed(3)}, ${listenerPos2[2].toFixed(3)}]`);
+      console.log(`  Virtual source: [${node.virtualSource[0].toFixed(3)}, ${node.virtualSource[1].toFixed(3)}, ${node.virtualSource[2].toFixed(3)}]`);
+    }
     let currentPoint = listenerPos2;
     let currentNode = node;
-    let prevPolyId = -1;
+    const ignoreIds = /* @__PURE__ */ new Set();
+    let segmentIndex = 0;
     while (currentNode && currentNode.id !== -1) {
       const poly = this.polygons[currentNode.id];
       const imageSource = currentNode.virtualSource;
       const dir = Vector3.normalize(Vector3.subtract(imageSource, currentPoint));
       const hit = Polygon3D.rayIntersection(currentPoint, dir, poly);
       if (!hit) {
+        if (debug) {
+          console.log(`  [Segment ${segmentIndex}] FAIL: No intersection with polygon ${currentNode.id}`);
+        }
         return null;
       }
+      if (debug) {
+        console.log(`  [Segment ${segmentIndex}] Ray from [${currentPoint[0].toFixed(3)}, ${currentPoint[1].toFixed(3)}, ${currentPoint[2].toFixed(3)}]`);
+        console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
+        console.log(`    Hit polygon ${currentNode.id} at t=${hit.t.toFixed(3)}, point=[${hit.point[0].toFixed(3)}, ${hit.point[1].toFixed(3)}, ${hit.point[2].toFixed(3)}]`);
+      }
+      ignoreIds.add(currentNode.id);
       this.metrics.raycastCount++;
-      const occluder = rayTraceBSP(currentPoint, dir, this.bspRoot, 1e-6, hit.t - 1e-6, prevPolyId);
+      const occluder = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, 1e-6, hit.t - 1e-6, ignoreIds);
       if (occluder) {
+        if (debug) {
+          console.log(`    OCCLUDED by polygon ${occluder.polygonId} at t=${occluder.t.toFixed(3)}, point=[${occluder.point[0].toFixed(3)}, ${occluder.point[1].toFixed(3)}, ${occluder.point[2].toFixed(3)}]`);
+          console.log(`    ignoreIds: [${Array.from(ignoreIds).join(", ")}]`);
+        }
         return null;
+      }
+      if (debug) {
+        console.log(`    OK - no occlusion (ignoreIds: [${Array.from(ignoreIds).join(", ")}])`);
       }
       pathPoints.push({
         position: Vector3.clone(hit.point),
         polygonId: currentNode.id
       });
       currentPoint = hit.point;
-      prevPolyId = currentNode.id;
       currentNode = currentNode.parent;
+      segmentIndex++;
     }
     if (currentNode) {
       const dir = Vector3.normalize(Vector3.subtract(currentNode.virtualSource, currentPoint));
       const dist = Vector3.distance(currentNode.virtualSource, currentPoint);
+      if (debug) {
+        console.log(`  [Final segment] Ray from [${currentPoint[0].toFixed(3)}, ${currentPoint[1].toFixed(3)}, ${currentPoint[2].toFixed(3)}]`);
+        console.log(`    To source: [${currentNode.virtualSource[0].toFixed(3)}, ${currentNode.virtualSource[1].toFixed(3)}, ${currentNode.virtualSource[2].toFixed(3)}]`);
+        console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
+        console.log(`    Distance: ${dist.toFixed(3)}`);
+        console.log(`    tMin: ${1e-6}, tMax: ${(dist - 1e-6).toFixed(6)}`);
+        console.log(`    ignoreIds: [${Array.from(ignoreIds).join(", ")}]`);
+        const p1 = currentPoint;
+        const p2 = currentNode.virtualSource;
+        if (p1[1] < 5.575 && p2[1] > 5.575 || p1[1] > 5.575 && p2[1] < 5.575) {
+          const t = (5.575 - p1[1]) / (p2[1] - p1[1]);
+          const xAtCross = p1[0] + t * (p2[0] - p1[0]);
+          const zAtCross = p1[2] + t * (p2[2] - p1[2]);
+          console.log(`    CROSSING y=5.575 at t=${t.toFixed(3)}, x=${xAtCross.toFixed(3)}, z=${zAtCross.toFixed(3)}`);
+          console.log(`    back1 spans: x=[6.215, 12.43], z=[0, 4.877]`);
+          if (xAtCross >= 6.215 && xAtCross <= 12.43 && zAtCross >= 0 && zAtCross <= 4.877) {
+            console.log(`    *** SHOULD HIT back1 (polygons 3, 4) ***`);
+            console.log(`    Direct polygon intersection test:`);
+            for (const polyId of [3, 4]) {
+              const poly = this.polygons[polyId];
+              const testHit = Polygon3D.rayIntersection(currentPoint, dir, poly);
+              if (testHit) {
+                console.log(`      Polygon ${polyId}: HIT at t=${testHit.t.toFixed(3)}, point=[${testHit.point[0].toFixed(3)}, ${testHit.point[1].toFixed(3)}, ${testHit.point[2].toFixed(3)}]`);
+              } else {
+                console.log(`      Polygon ${polyId}: NO HIT`);
+                console.log(`        Vertices: ${poly.vertices.map((v) => `[${v[0].toFixed(2)}, ${v[1].toFixed(2)}, ${v[2].toFixed(2)}]`).join(", ")}`);
+              }
+            }
+          }
+        }
+      }
       this.metrics.raycastCount++;
-      const finalHit = rayTraceBSP(currentPoint, dir, this.bspRoot, 1e-6, dist - 1e-6, prevPolyId);
+      const tMinVal = 1e-6;
+      const tMaxVal = dist - 1e-6;
+      const finalHit = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, tMinVal, tMaxVal, ignoreIds);
       if (finalHit) {
+        if (debug) {
+          console.log(`    OCCLUDED by polygon ${finalHit.polygonId} at t=${finalHit.t.toFixed(3)}, point=[${finalHit.point[0].toFixed(3)}, ${finalHit.point[1].toFixed(3)}, ${finalHit.point[2].toFixed(3)}]`);
+        }
         return null;
+      }
+      if (debug) {
+        console.log(`    OK - path valid!`);
       }
       pathPoints.push({
         position: Vector3.clone(currentNode.virtualSource),
@@ -1169,6 +1389,44 @@ var OptimizedSolver3D = class {
    */
   getMetrics() {
     return { ...this.metrics };
+  }
+  /**
+   * Debug a specific beam path by polygon IDs
+   * Logs detailed information about the path validation process
+   */
+  debugBeamPath(listenerPos2, polygonPath) {
+    console.log("=== DEBUG BEAM PATH ===");
+    console.log(`Listener: [${listenerPos2[0].toFixed(3)}, ${listenerPos2[1].toFixed(3)}, ${listenerPos2[2].toFixed(3)}]`);
+    console.log(`Polygon path: [${polygonPath.join(", ")}]`);
+    console.log(`Source: [${this.sourcePosition[0].toFixed(3)}, ${this.sourcePosition[1].toFixed(3)}, ${this.sourcePosition[2].toFixed(3)}]`);
+    const findNode = (node, path, depth) => {
+      if (depth === path.length) {
+        return node;
+      }
+      for (const child of node.children) {
+        if (child.id === path[depth]) {
+          return findNode(child, path, depth + 1);
+        }
+      }
+      return null;
+    };
+    const targetNode = findNode(this.beamTree.root, polygonPath, 0);
+    if (!targetNode) {
+      console.log("ERROR: Could not find beam node for this polygon path");
+      return;
+    }
+    console.log(`Found beam node with virtual source: [${targetNode.virtualSource[0].toFixed(3)}, ${targetNode.virtualSource[1].toFixed(3)}, ${targetNode.virtualSource[2].toFixed(3)}]`);
+    const result = this.traverseBeam(listenerPos2, targetNode, true);
+    if (result) {
+      console.log("PATH VALID - returned path:");
+      for (let i = 0; i < result.length; i++) {
+        const p = result[i];
+        console.log(`  [${i}] pos=[${p.position[0].toFixed(3)}, ${p.position[1].toFixed(3)}, ${p.position[2].toFixed(3)}], polygonId=${p.polygonId}`);
+      }
+    } else {
+      console.log("PATH INVALID");
+    }
+    console.log("=== END DEBUG ===");
   }
   /**
    * Clear all cached fail planes and skip spheres
@@ -1206,22 +1464,24 @@ var OptimizedSolver3D = class {
   getBeamsForVisualization(maxOrder) {
     const beams = [];
     const effectiveMaxOrder = maxOrder ?? this.beamTree.maxReflectionOrder;
-    const traverse = (node, order) => {
+    const traverse = (node, order, pathSoFar) => {
       if (order > effectiveMaxOrder)
         return;
+      const currentPath = node.id !== -1 ? [...pathSoFar, node.id] : pathSoFar;
       if (node.id !== -1 && node.aperture) {
         beams.push({
           virtualSource: Vector3.clone(node.virtualSource),
           apertureVertices: node.aperture.vertices.map((v) => Vector3.clone(v)),
           reflectionOrder: order,
-          polygonId: node.id
+          polygonId: node.id,
+          polygonPath: currentPath
         });
       }
       for (const child of node.children) {
-        traverse(child, order + 1);
+        traverse(child, order + 1, currentPath);
       }
     };
-    traverse(this.beamTree.root, 0);
+    traverse(this.beamTree.root, 0, []);
     return beams;
   }
   /**
@@ -1407,6 +1667,14 @@ var Solver3D = class {
    */
   getBeamsForVisualization(maxOrder) {
     return this.solver.getBeamsForVisualization(maxOrder);
+  }
+  /**
+   * Debug a specific beam path by polygon IDs
+   * Logs detailed information about the path validation process
+   */
+  debugBeamPath(listener2, polygonPath) {
+    const pos = Array.isArray(listener2) ? listener2 : listener2.position;
+    this.solver.debugBeamPath(pos, polygonPath);
   }
 };
 
@@ -2340,6 +2608,7 @@ var MIN_REFLECTION_ORDER = 0;
 var MAX_REFLECTION_ORDER = 6;
 var currentReflectionOrder = 3;
 var visualizationMode = "paths";
+var showAllVirtualSources = false;
 var PATH_COLORS = [
   65280,
   // Direct (green)
@@ -2674,6 +2943,12 @@ var pathsGroup = new THREE.Group();
 scene.add(pathsGroup);
 var beamsGroup = new THREE.Group();
 scene.add(beamsGroup);
+var highlightGroup = new THREE.Group();
+scene.add(highlightGroup);
+var virtualSourceMap = /* @__PURE__ */ new Map();
+var pathMeshMap = /* @__PURE__ */ new Map();
+var selectedVirtualSource = null;
+var selectedPath = null;
 function clearVisualization() {
   while (pathsGroup.children.length > 0) {
     const child = pathsGroup.children[0];
@@ -2699,6 +2974,25 @@ function clearVisualization() {
         mat.dispose();
     }
   }
+  clearHighlights();
+  virtualSourceMap.clear();
+  selectedVirtualSource = null;
+  pathMeshMap.clear();
+  selectedPath = null;
+}
+function clearHighlights() {
+  while (highlightGroup.children.length > 0) {
+    const child = highlightGroup.children[0];
+    highlightGroup.remove(child);
+    if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+      child.geometry?.dispose();
+      const mat = child.material;
+      if (Array.isArray(mat))
+        mat.forEach((m) => m.dispose());
+      else if (mat)
+        mat.dispose();
+    }
+  }
 }
 function updatePaths() {
   clearVisualization();
@@ -2708,11 +3002,9 @@ function updatePaths() {
   smoothedComputeTime = smoothedComputeTime * (1 - TIMING_SMOOTHING) + solveTime * TIMING_SMOOTHING;
   const metrics = solver.getMetrics();
   const renderStart = performance.now();
-  if (visualizationMode === "beams") {
+  if (visualizationMode === "sources") {
     const beams = solver.getBeamsForVisualization(currentReflectionOrder);
-    for (const beam of beams) {
-      drawBeamCone(beam);
-    }
+    drawVirtualSources(beams);
   } else {
     for (const path of paths) {
       drawPath(path);
@@ -2727,81 +3019,216 @@ function drawPath(path) {
   const colorIndex = Math.min(order, PATH_COLORS.length - 1);
   const color = PATH_COLORS[colorIndex];
   const points = path.map((p) => btToThree(p.position));
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
   const opacity = Math.max(0.3, 0.8 - order * 0.15);
-  const material = new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    linewidth: 2
-    // Note: linewidth > 1 only works on some systems
-  });
-  const line = new THREE.Line(geometry, material);
-  pathsGroup.add(line);
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    const segLen = start.distanceTo(end);
+    const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    const cylGeom = new THREE.CylinderGeometry(0.015, 0.015, segLen, 6);
+    const cylMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity
+    });
+    const cyl = new THREE.Mesh(cylGeom, cylMat);
+    cyl.position.copy(midPoint);
+    const direction = new THREE.Vector3().subVectors(end, start).normalize();
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    cyl.setRotationFromQuaternion(quaternion);
+    pathsGroup.add(cyl);
+    pathMeshMap.set(cyl, path);
+  }
   for (let i = 1; i < path.length - 1; i++) {
-    const pointGeom = new THREE.SphereGeometry(0.03, 8, 8);
+    const pointGeom = new THREE.SphereGeometry(0.04, 8, 8);
     const pointMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
     const pointMesh = new THREE.Mesh(pointGeom, pointMat);
     pointMesh.position.copy(btToThree(path[i].position));
     pathsGroup.add(pointMesh);
+    pathMeshMap.set(pointMesh, path);
   }
 }
-function drawBeamCone(beam) {
-  const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
-  const color = PATH_COLORS[colorIndex];
-  const opacity = Math.max(0.08, 0.2 - beam.reflectionOrder * 0.03);
-  const vs = btToThree(beam.virtualSource);
-  const apertureVerts = beam.apertureVertices.map((v) => btToThree(v));
-  for (let i = 0; i < apertureVerts.length; i++) {
-    const edgeGeom = new THREE.BufferGeometry().setFromPoints([vs, apertureVerts[i]]);
-    const edgeMat = new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: opacity * 2
-    });
-    beamsGroup.add(new THREE.Line(edgeGeom, edgeMat));
+function beamHasValidPath(beam, paths) {
+  const polygonPath = beam.polygonPath;
+  if (!polygonPath || polygonPath.length === 0)
+    return false;
+  const targetOrder = beam.reflectionOrder;
+  for (const path of paths) {
+    const pathOrder = path.length - 2;
+    if (pathOrder !== targetOrder)
+      continue;
+    let matches = true;
+    for (let i = 0; i < polygonPath.length; i++) {
+      const pathIndex = pathOrder - i;
+      const pathPolygonId = path[pathIndex].polygonId;
+      if (pathPolygonId !== polygonPath[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches)
+      return true;
   }
-  const apertureOutline = [...apertureVerts, apertureVerts[0]];
-  const outlineGeom = new THREE.BufferGeometry().setFromPoints(apertureOutline);
-  const outlineMat = new THREE.LineBasicMaterial({
-    color,
-    transparent: true,
-    opacity: opacity * 3
+  return false;
+}
+function drawVirtualSources(beams) {
+  const paths = solver.getPaths(listener);
+  const realSourcePos = btToThree(sourcePos);
+  const realSourceGeom = new THREE.SphereGeometry(0.18, 16, 16);
+  const realSourceMat = new THREE.MeshStandardMaterial({
+    color: 16729156,
+    emissive: 16720418,
+    emissiveIntensity: 0.5,
+    roughness: 0.3,
+    metalness: 0.5
   });
-  beamsGroup.add(new THREE.Line(outlineGeom, outlineMat));
-  for (let i = 0; i < apertureVerts.length; i++) {
-    const next = (i + 1) % apertureVerts.length;
-    const v0 = vs;
-    const v1 = apertureVerts[i];
-    const v2 = apertureVerts[next];
-    const faceGeom = new THREE.BufferGeometry();
-    const vertices = new Float32Array([
-      v0.x,
-      v0.y,
-      v0.z,
-      v1.x,
-      v1.y,
-      v1.z,
-      v2.x,
-      v2.y,
-      v2.z
-    ]);
-    faceGeom.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-    faceGeom.computeVertexNormals();
-    const faceMat = new THREE.MeshBasicMaterial({
+  const realSourceMesh = new THREE.Mesh(realSourceGeom, realSourceMat);
+  realSourceMesh.position.copy(realSourcePos);
+  beamsGroup.add(realSourceMesh);
+  const baseSphereRadius = 0.12;
+  for (const beam of beams) {
+    const hasValidPath = beamHasValidPath(beam, paths);
+    if (!hasValidPath && !showAllVirtualSources) {
+      continue;
+    }
+    const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
+    const color = PATH_COLORS[colorIndex];
+    const radius = baseSphereRadius * Math.pow(0.85, beam.reflectionOrder - 1);
+    const opacity = Math.max(0.4, 1 - beam.reflectionOrder * 0.15);
+    const vs = btToThree(beam.virtualSource);
+    const vsGeom = new THREE.SphereGeometry(radius, 12, 12);
+    const vsMat = new THREE.MeshStandardMaterial({
       color,
+      emissive: color,
+      emissiveIntensity: 0.3,
       transparent: true,
       opacity,
-      side: THREE.DoubleSide,
-      depthWrite: false
+      roughness: 0.5,
+      metalness: 0.3
     });
-    beamsGroup.add(new THREE.Mesh(faceGeom, faceMat));
+    const vsMesh = new THREE.Mesh(vsGeom, vsMat);
+    vsMesh.position.copy(vs);
+    beamsGroup.add(vsMesh);
+    virtualSourceMap.set(vsMesh, beam);
   }
-  const vsGeom = new THREE.SphereGeometry(0.05, 8, 8);
-  const vsMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6 });
-  const vsMesh = new THREE.Mesh(vsGeom, vsMat);
-  vsMesh.position.copy(vs);
-  beamsGroup.add(vsMesh);
+}
+function highlightSelectedPolygon(beam) {
+  clearHighlights();
+  const colorIndex = Math.min(beam.reflectionOrder, PATH_COLORS.length - 1);
+  const color = PATH_COLORS[colorIndex];
+  const vs = btToThree(beam.virtualSource);
+  const listenerThree = btToThree(listenerPos);
+  const unfoldedLineGeom = new THREE.BufferGeometry().setFromPoints([vs, listenerThree]);
+  const unfoldedLineMat = new THREE.LineDashedMaterial({
+    color,
+    transparent: true,
+    opacity: 0.4,
+    dashSize: 0.3,
+    gapSize: 0.15
+  });
+  const unfoldedLine = new THREE.Line(unfoldedLineGeom, unfoldedLineMat);
+  unfoldedLine.computeLineDistances();
+  highlightGroup.add(unfoldedLine);
+  const highlightGeom = new THREE.SphereGeometry(0.18, 16, 16);
+  const highlightMat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.4
+  });
+  const highlightMesh = new THREE.Mesh(highlightGeom, highlightMat);
+  highlightMesh.position.copy(vs);
+  highlightGroup.add(highlightMesh);
+  const paths = solver.getPaths(listener);
+  const polygonPath = beam.polygonPath;
+  if (!polygonPath || polygonPath.length === 0) {
+    return;
+  }
+  const targetOrder = beam.reflectionOrder;
+  for (const path of paths) {
+    const pathOrder = path.length - 2;
+    if (pathOrder !== targetOrder)
+      continue;
+    let matches = true;
+    for (let i = 0; i < polygonPath.length; i++) {
+      const pathIndex = pathOrder - i;
+      const pathPolygonId = path[pathIndex].polygonId;
+      if (pathPolygonId !== polygonPath[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      const points = path.map((p) => btToThree(p.position));
+      const numReflections = path.length - 2;
+      for (let i = 0; i < points.length - 1; i++) {
+        const start = points[i];
+        const end = points[i + 1];
+        const segLen = start.distanceTo(end);
+        const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+        const segmentOrder = numReflections - i;
+        const segColor = segmentOrder === 0 ? 16777215 : PATH_COLORS[Math.min(segmentOrder, PATH_COLORS.length - 1)];
+        const cylGeom = new THREE.CylinderGeometry(0.025, 0.025, segLen, 8);
+        const cylMat = new THREE.MeshBasicMaterial({ color: segColor });
+        const cyl = new THREE.Mesh(cylGeom, cylMat);
+        cyl.position.copy(midPoint);
+        const direction = new THREE.Vector3().subVectors(end, start).normalize();
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+        cyl.setRotationFromQuaternion(quaternion);
+        highlightGroup.add(cyl);
+      }
+      for (let i = 1; i < path.length - 1; i++) {
+        const pointOrder = numReflections - i + 1;
+        const pointColorIndex = Math.min(pointOrder, PATH_COLORS.length - 1);
+        const pointColor = PATH_COLORS[pointColorIndex];
+        const pointGeom = new THREE.SphereGeometry(0.08, 12, 12);
+        const pointMat = new THREE.MeshBasicMaterial({ color: pointColor });
+        const pointMesh = new THREE.Mesh(pointGeom, pointMat);
+        pointMesh.position.copy(btToThree(path[i].position));
+        highlightGroup.add(pointMesh);
+      }
+      return;
+    }
+  }
+}
+function highlightPath(path) {
+  clearHighlights();
+  const order = getPathReflectionOrder(path);
+  const colorIndex = Math.min(order, PATH_COLORS.length - 1);
+  const color = PATH_COLORS[colorIndex];
+  const points = path.map((p) => btToThree(p.position));
+  const numReflections = path.length - 2;
+  for (let i = 0; i < points.length - 1; i++) {
+    const start = points[i];
+    const end = points[i + 1];
+    const segLen = start.distanceTo(end);
+    const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+    const segmentOrder = numReflections - i;
+    const segColor = segmentOrder === 0 ? 16777215 : PATH_COLORS[Math.min(segmentOrder, PATH_COLORS.length - 1)];
+    const cylGeom = new THREE.CylinderGeometry(0.03, 0.03, segLen, 8);
+    const cylMat = new THREE.MeshBasicMaterial({ color: segColor });
+    const cyl = new THREE.Mesh(cylGeom, cylMat);
+    cyl.position.copy(midPoint);
+    const direction = new THREE.Vector3().subVectors(end, start).normalize();
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+    cyl.setRotationFromQuaternion(quaternion);
+    highlightGroup.add(cyl);
+  }
+  for (let i = 1; i < path.length - 1; i++) {
+    const pointOrder = numReflections - i + 1;
+    const pointColorIndex = Math.min(pointOrder, PATH_COLORS.length - 1);
+    const pointColor = PATH_COLORS[pointColorIndex];
+    const pointGeom = new THREE.SphereGeometry(0.1, 12, 12);
+    const pointMat = new THREE.MeshBasicMaterial({ color: pointColor });
+    const pointMesh = new THREE.Mesh(pointGeom, pointMat);
+    pointMesh.position.copy(btToThree(path[i].position));
+    highlightGroup.add(pointMesh);
+  }
+  const listenerHighlight = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));
+  listenerHighlight.position.copy(btToThree(path[0].position));
+  highlightGroup.add(listenerHighlight);
 }
 function formatTime(ms) {
   if (ms < 1) {
@@ -2948,7 +3375,29 @@ function getHoveredObject() {
 }
 function updateCursor() {
   const hovered = getHoveredObject();
-  renderer.domElement.style.cursor = hovered ? "grab" : "default";
+  if (hovered) {
+    renderer.domElement.style.cursor = "grab";
+    return;
+  }
+  if (visualizationMode === "sources" && virtualSourceMap.size > 0) {
+    raycaster.setFromCamera(mouse, camera);
+    const virtualSourceMeshes = Array.from(virtualSourceMap.keys());
+    const vsIntersects = raycaster.intersectObjects(virtualSourceMeshes);
+    if (vsIntersects.length > 0) {
+      renderer.domElement.style.cursor = "pointer";
+      return;
+    }
+  }
+  if (visualizationMode === "paths" && pathMeshMap.size > 0) {
+    raycaster.setFromCamera(mouse, camera);
+    const pathMeshes = Array.from(pathMeshMap.keys());
+    const pathIntersects = raycaster.intersectObjects(pathMeshes);
+    if (pathIntersects.length > 0) {
+      renderer.domElement.style.cursor = "pointer";
+      return;
+    }
+  }
+  renderer.domElement.style.cursor = "default";
 }
 function updatePathsRealtime(skipUI = false) {
   clearVisualization();
@@ -2957,11 +3406,9 @@ function updatePathsRealtime(skipUI = false) {
   const solveTime = performance.now() - solveStart;
   smoothedComputeTime = smoothedComputeTime * (1 - TIMING_SMOOTHING) + solveTime * TIMING_SMOOTHING;
   const renderStart = performance.now();
-  if (visualizationMode === "beams") {
+  if (visualizationMode === "sources") {
     const beams = solver.getBeamsForVisualization(currentReflectionOrder);
-    for (const beam of beams) {
-      drawBeamCone(beam);
-    }
+    drawVirtualSources(beams);
   } else {
     for (const path of paths) {
       drawPath(path);
@@ -3058,6 +3505,64 @@ renderer.domElement.addEventListener("mouseup", (event) => {
     const didMove = Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD;
     if (!didMove) {
       raycaster.setFromCamera(mouse, camera);
+      if (visualizationMode === "sources") {
+        const virtualSourceMeshes = Array.from(virtualSourceMap.keys());
+        const vsIntersects = raycaster.intersectObjects(virtualSourceMeshes);
+        if (vsIntersects.length > 0) {
+          const clickedMesh = vsIntersects[0].object;
+          const beam = virtualSourceMap.get(clickedMesh);
+          if (beam) {
+            if (selectedVirtualSource === clickedMesh) {
+              selectedVirtualSource = null;
+              clearHighlights();
+            } else {
+              selectedVirtualSource = clickedMesh;
+              highlightSelectedPolygon(beam);
+              console.log("=== CLICKED VIRTUAL SOURCE ===");
+              console.log(`Reflection order: ${beam.reflectionOrder}`);
+              console.log(`Polygon path: [${beam.polygonPath.join(", ")}]`);
+              console.log(`Virtual source: [${beam.virtualSource[0].toFixed(3)}, ${beam.virtualSource[1].toFixed(3)}, ${beam.virtualSource[2].toFixed(3)}]`);
+              solver.debugBeamPath(listenerPos, beam.polygonPath);
+            }
+            return;
+          }
+        }
+      }
+      if (visualizationMode === "paths" && pathMeshMap.size > 0) {
+        const pathMeshes = Array.from(pathMeshMap.keys());
+        const pathIntersects = raycaster.intersectObjects(pathMeshes);
+        if (pathIntersects.length > 0) {
+          const clickedMesh = pathIntersects[0].object;
+          const path = pathMeshMap.get(clickedMesh);
+          if (path) {
+            const polygonPath = [];
+            for (let i = path.length - 2; i >= 1; i--) {
+              const polygonId = path[i].polygonId;
+              if (polygonId !== null) {
+                polygonPath.push(polygonId);
+              }
+            }
+            if (selectedPath === path) {
+              selectedPath = null;
+              clearHighlights();
+            } else {
+              selectedPath = path;
+              highlightPath(path);
+              const order = getPathReflectionOrder(path);
+              console.log("=== CLICKED PATH ===");
+              console.log(`Reflection order: ${order}`);
+              console.log(`Polygon path: [${polygonPath.join(", ")}]`);
+              console.log(`Path points:`);
+              for (let i = 0; i < path.length; i++) {
+                const p = path[i];
+                console.log(`  [${i}] pos=[${p.position[0].toFixed(3)}, ${p.position[1].toFixed(3)}, ${p.position[2].toFixed(3)}], polygonId=${p.polygonId}`);
+              }
+              solver.debugBeamPath(listenerPos, polygonPath);
+            }
+            return;
+          }
+        }
+      }
       const intersects = raycaster.intersectObject(floor);
       if (intersects.length > 0) {
         const point = intersects[0].point;
@@ -3127,16 +3632,34 @@ document.getElementById("orderDown")?.addEventListener("click", (e) => {
   changeReflectionOrder(-1);
 });
 function toggleVisualizationMode() {
-  visualizationMode = visualizationMode === "paths" ? "beams" : "paths";
+  visualizationMode = visualizationMode === "paths" ? "sources" : "paths";
   const toggleBtn = document.getElementById("toggleView");
   if (toggleBtn) {
-    toggleBtn.textContent = visualizationMode === "paths" ? "Paths" : "Beams";
+    toggleBtn.textContent = visualizationMode === "paths" ? "Paths" : "Sources";
+  }
+  const showAllLabel = document.getElementById("showAllLabel");
+  const showAllBtn = document.getElementById("toggleShowAll");
+  if (showAllLabel && showAllBtn) {
+    showAllLabel.style.display = visualizationMode === "sources" ? "inline" : "none";
+    showAllBtn.style.display = visualizationMode === "sources" ? "inline" : "none";
+  }
+  updatePaths();
+}
+function toggleShowAllVirtualSources() {
+  showAllVirtualSources = !showAllVirtualSources;
+  const toggleBtn = document.getElementById("toggleShowAll");
+  if (toggleBtn) {
+    toggleBtn.textContent = showAllVirtualSources ? "On" : "Off";
   }
   updatePaths();
 }
 document.getElementById("toggleView")?.addEventListener("click", (e) => {
   e.stopPropagation();
   toggleVisualizationMode();
+});
+document.getElementById("toggleShowAll")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleShowAllVirtualSources();
 });
 document.getElementById("roomSelect")?.addEventListener("change", (e) => {
   const select = e.target;

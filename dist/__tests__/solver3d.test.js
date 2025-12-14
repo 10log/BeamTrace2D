@@ -573,4 +573,125 @@ describe('convertToDetailedPath3D', () => {
         expect(detailed.segments.length).toBe(1);
     });
 });
+/**
+ * Create a simplified L-shaped room for testing occlusion
+ * The room looks like this (top view, z is up):
+ *
+ *     +--------+
+ *     |        |
+ *     |   B    |  (upper arm: y from 5 to 10)
+ *     |        |
+ *     +---+----+
+ *         |    |
+ *     A   |    |  (lower arm: y from 0 to 5)
+ *         |    |
+ * +-------+----+
+ *
+ * Inner walls at x=5 (from y=5 to y=10) and y=5 (from x=0 to x=5)
+ */
+function createLShapedRoom() {
+    const height = 3;
+    const polygons = [];
+    // Floor - L-shaped (two rectangles)
+    // Lower section: x=[0,10], y=[0,5]
+    polygons.push(Polygon3D.create([
+        [0, 0, 0], [10, 0, 0], [10, 5, 0], [0, 5, 0]
+    ]));
+    // Upper section: x=[5,10], y=[5,10]
+    polygons.push(Polygon3D.create([
+        [5, 5, 0], [10, 5, 0], [10, 10, 0], [5, 10, 0]
+    ]));
+    // Ceiling - L-shaped
+    polygons.push(Polygon3D.create([
+        [0, 0, height], [0, 5, height], [10, 5, height], [10, 0, height]
+    ]));
+    polygons.push(Polygon3D.create([
+        [5, 5, height], [5, 10, height], [10, 10, height], [10, 5, height]
+    ]));
+    // Outer walls
+    // Front wall (y=0)
+    polygons.push(Polygon3D.create([
+        [0, 0, 0], [0, 0, height], [10, 0, height], [10, 0, 0]
+    ]));
+    // Right wall (x=10)
+    polygons.push(Polygon3D.create([
+        [10, 0, 0], [10, 0, height], [10, 10, height], [10, 10, 0]
+    ]));
+    // Back wall (y=10)
+    polygons.push(Polygon3D.create([
+        [10, 10, 0], [10, 10, height], [5, 10, height], [5, 10, 0]
+    ]));
+    // Left wall of upper section (x=5, y from 5 to 10)
+    polygons.push(Polygon3D.create([
+        [5, 10, 0], [5, 10, height], [5, 5, height], [5, 5, 0]
+    ]));
+    // Inner horizontal wall (y=5, x from 0 to 5)
+    polygons.push(Polygon3D.create([
+        [5, 5, 0], [5, 5, height], [0, 5, height], [0, 5, 0]
+    ]));
+    // Left wall of lower section (x=0)
+    polygons.push(Polygon3D.create([
+        [0, 5, 0], [0, 5, height], [0, 0, height], [0, 0, 0]
+    ]));
+    return polygons;
+}
+describe('L-shaped room occlusion', () => {
+    it('rejects direct paths that cross inner walls', () => {
+        const room = createLShapedRoom();
+        // Source in lower arm (section A), listener in upper arm (section B)
+        // Direct line would cross the inner wall
+        const source = [2, 2, 1.5]; // In lower arm at x=2, y=2
+        const listener = [7, 7, 1.5]; // In upper arm at x=7, y=7
+        const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 0 });
+        const paths = solver.getPaths(listener);
+        // Should have NO direct path since it crosses the inner wall
+        const directPaths = paths.filter(p => p.length === 2);
+        expect(directPaths.length).toBe(0);
+    });
+    it('finds direct paths that do not cross inner walls', () => {
+        const room = createLShapedRoom();
+        // Both source and listener in the same arm
+        const source = [7, 7, 1.5]; // In upper arm
+        const listener = [8, 8, 1.5]; // Also in upper arm
+        const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 0 });
+        const paths = solver.getPaths(listener);
+        // Should have direct path since both are in same arm
+        const directPaths = paths.filter(p => p.length === 2);
+        expect(directPaths.length).toBe(1);
+    });
+    it('rejects reflection paths that cross inner walls', () => {
+        const room = createLShapedRoom();
+        // Source in lower arm, listener in upper arm
+        // Any first-order reflection that would require crossing the inner wall should be rejected
+        const source = [2, 2, 1.5]; // In lower arm
+        const listener = [7, 7, 1.5]; // In upper arm
+        const solver = new OptimizedSolver3D(room, source, { maxReflectionOrder: 1 });
+        const paths = solver.getPaths(listener);
+        // Verify that all returned paths do NOT pass through inner walls
+        // For each path, check that consecutive points don't cross the inner walls
+        for (const path of paths) {
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i].position;
+                const p2 = path[i + 1].position;
+                // Check if segment crosses the inner horizontal wall at y=5, x=[0,5]
+                // If one point has y < 5 and other has y > 5, and the crossing point has x < 5
+                if ((p1[1] < 5 && p2[1] > 5) || (p1[1] > 5 && p2[1] < 5)) {
+                    // Find x at y=5
+                    const t = (5 - p1[1]) / (p2[1] - p1[1]);
+                    const xAtY5 = p1[0] + t * (p2[0] - p1[0]);
+                    // If crossing happens in the wall region (x < 5), this is invalid
+                    expect(xAtY5).toBeGreaterThanOrEqual(5);
+                }
+                // Check if segment crosses the inner vertical wall at x=5, y=[5,10]
+                if ((p1[0] < 5 && p2[0] > 5) || (p1[0] > 5 && p2[0] < 5)) {
+                    // Find y at x=5
+                    const t = (5 - p1[0]) / (p2[0] - p1[0]);
+                    const yAtX5 = p1[1] + t * (p2[1] - p1[1]);
+                    // If crossing happens in the wall region (y > 5), this is invalid
+                    expect(yAtX5).toBeLessThanOrEqual(5);
+                }
+            }
+        }
+    });
+});
 //# sourceMappingURL=solver3d.test.js.map

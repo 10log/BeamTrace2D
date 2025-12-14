@@ -39,6 +39,7 @@ export interface BeamVisualizationData {
     apertureVertices: Vector3[];
     reflectionOrder: number;
     polygonId: number;
+    polygonPath: number[];
 }
 /**
  * Optimized 3D Beam Tracing Solver
@@ -106,6 +107,11 @@ export declare class OptimizedSolver3D {
      * Get performance metrics from the last getPaths() call
      */
     getMetrics(): PerformanceMetrics3D;
+    /**
+     * Debug a specific beam path by polygon IDs
+     * Logs detailed information about the path validation process
+     */
+    debugBeamPath(listenerPos: Vector3, polygonPath: number[]): void;
     /**
      * Clear all cached fail planes and skip spheres
      *

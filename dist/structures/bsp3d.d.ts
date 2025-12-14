@@ -45,6 +45,19 @@ export declare function buildBSP(polygons: Polygon3D[]): BSPNode3D | null;
  * @returns First hit along the ray, or null if no hit
  */
 export declare function rayTraceBSP(origin: Vector3, direction: Vector3, node: BSPNode3D | null, tMin?: number, tMax?: number, ignoreId?: number): RayHit3D | null;
+export declare function setBSPDebug(enabled: boolean): void;
+/**
+ * Trace a ray through the BSP tree, ignoring multiple polygon IDs
+ *
+ * @param origin - Ray origin point
+ * @param direction - Ray direction (should be normalized for t to be distance)
+ * @param node - BSP tree root node
+ * @param tMin - Minimum t value to consider
+ * @param tMax - Maximum t value to consider
+ * @param ignoreIds - Set of polygon IDs to ignore
+ * @returns First hit along the ray, or null if no hit
+ */
+export declare function rayTraceBSPMultiIgnore(origin: Vector3, direction: Vector3, node: BSPNode3D | null, tMin: number, tMax: number, ignoreIds: Set<number>): RayHit3D | null;
 /**
  * Check if a ray hits any polygon (occlusion test)
  *
