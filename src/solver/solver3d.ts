@@ -18,7 +18,7 @@ import {
 } from '../core/types';
 import { Polygon3D } from '../geometry/polygon3d';
 import { Plane3D } from '../core/plane3d';
-import { BSPNode3D, buildBSP, rayTraceBSP } from '../structures/bsp3d';
+import { BSPNode3D, buildBSP, rayTraceBSP, rayTraceBSPMultiIgnore } from '../structures/bsp3d';
 import { BeamTree3D, BeamNode3D, buildBeamTree3D, clearFailPlanes } from '../structures/beamtree3d';
 import { detectFailPlane, isListenerBehindFailPlane } from '../optimization/failplane3d';
 import {
@@ -62,6 +62,7 @@ export interface BeamVisualizationData {
   apertureVertices: Vector3[];  // Vertices of the aperture polygon
   reflectionOrder: number;      // Reflection order (1 = first reflection)
   polygonId: number;            // ID of the reflecting polygon
+  polygonPath: number[];        // Full path of polygon IDs from 1st to this reflection
 }
 
 /**
@@ -263,14 +264,31 @@ export class OptimizedSolver3D {
   /**
    * Traverse a beam from listener to source, building the reflection path
    */
-  private traverseBeam(listenerPos: Vector3, node: BeamNode3D): ReflectionPath3D | null {
+  private traverseBeam(listenerPos: Vector3, node: BeamNode3D, debug: boolean = false): ReflectionPath3D | null {
     const pathPoints: PathPoint3D[] = [
       { position: Vector3.clone(listenerPos), polygonId: null }
     ];
 
+    // Build polygon path for logging
+    const polygonPath: number[] = [];
+    let tempNode: BeamNode3D | null = node;
+    while (tempNode && tempNode.id !== -1) {
+      polygonPath.unshift(tempNode.id);
+      tempNode = tempNode.parent;
+    }
+
+    if (debug) {
+      console.log(`[traverseBeam] Exploring beam with polygonPath: [${polygonPath.join(', ')}]`);
+      console.log(`  Listener: [${listenerPos[0].toFixed(3)}, ${listenerPos[1].toFixed(3)}, ${listenerPos[2].toFixed(3)}]`);
+      console.log(`  Virtual source: [${node.virtualSource[0].toFixed(3)}, ${node.virtualSource[1].toFixed(3)}, ${node.virtualSource[2].toFixed(3)}]`);
+    }
+
     let currentPoint = listenerPos;
     let currentNode: BeamNode3D | null = node;
-    let prevPolyId = -1;
+    // Track all polygon IDs that should be ignored in occlusion checks
+    // (the polygon we're coming from and the polygon we're going to)
+    const ignoreIds = new Set<number>();
+    let segmentIndex = 0;
 
     // Walk from leaf to root, finding reflection points
     while (currentNode && currentNode.id !== -1) {
@@ -284,24 +302,44 @@ export class OptimizedSolver3D {
       const hit = Polygon3D.rayIntersection(currentPoint, dir, poly);
 
       if (!hit) {
-        // Should intersect reflecting polygon - validation failure
+        if (debug) {
+          console.log(`  [Segment ${segmentIndex}] FAIL: No intersection with polygon ${currentNode.id}`);
+        }
         return null;
       }
 
+      if (debug) {
+        console.log(`  [Segment ${segmentIndex}] Ray from [${currentPoint[0].toFixed(3)}, ${currentPoint[1].toFixed(3)}, ${currentPoint[2].toFixed(3)}]`);
+        console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
+        console.log(`    Hit polygon ${currentNode.id} at t=${hit.t.toFixed(3)}, point=[${hit.point[0].toFixed(3)}, ${hit.point[1].toFixed(3)}, ${hit.point[2].toFixed(3)}]`);
+      }
+
       // Check for occlusion between current point and reflection point
+      // We need to ignore:
+      // - The polygon we just came from (already in ignoreIds from previous iteration)
+      // - The polygon we're reflecting to (currentNode.id) since it's at the endpoint
+      ignoreIds.add(currentNode.id);
+
       this.metrics.raycastCount++;
-      const occluder = rayTraceBSP(
+      const occluder = rayTraceBSPMultiIgnore(
         currentPoint,
         dir,
         this.bspRoot,
         1e-6,
         hit.t - 1e-6,
-        prevPolyId
+        ignoreIds
       );
 
       if (occluder) {
-        // Path is blocked
+        if (debug) {
+          console.log(`    OCCLUDED by polygon ${occluder.polygonId} at t=${occluder.t.toFixed(3)}, point=[${occluder.point[0].toFixed(3)}, ${occluder.point[1].toFixed(3)}, ${occluder.point[2].toFixed(3)}]`);
+          console.log(`    ignoreIds: [${Array.from(ignoreIds).join(', ')}]`);
+        }
         return null;
+      }
+
+      if (debug) {
+        console.log(`    OK - no occlusion (ignoreIds: [${Array.from(ignoreIds).join(', ')}])`);
       }
 
       // Add reflection point to path
@@ -311,8 +349,10 @@ export class OptimizedSolver3D {
       });
 
       currentPoint = hit.point;
-      prevPolyId = currentNode.id;
+      // Keep the current polygon in ignoreIds for the next segment
+      // (we're leaving from this polygon)
       currentNode = currentNode.parent;
+      segmentIndex++;
     }
 
     // Final segment to actual source
@@ -322,19 +362,67 @@ export class OptimizedSolver3D {
       );
       const dist = Vector3.distance(currentNode.virtualSource, currentPoint);
 
+      if (debug) {
+        console.log(`  [Final segment] Ray from [${currentPoint[0].toFixed(3)}, ${currentPoint[1].toFixed(3)}, ${currentPoint[2].toFixed(3)}]`);
+        console.log(`    To source: [${currentNode.virtualSource[0].toFixed(3)}, ${currentNode.virtualSource[1].toFixed(3)}, ${currentNode.virtualSource[2].toFixed(3)}]`);
+        console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
+        console.log(`    Distance: ${dist.toFixed(3)}`);
+        console.log(`    tMin: ${1e-6}, tMax: ${(dist - 1e-6).toFixed(6)}`);
+        console.log(`    ignoreIds: [${Array.from(ignoreIds).join(', ')}]`);
+
+        // Check intersection with back1 (inner wall at y=5.575)
+        // If segment crosses y=5.575, calculate where
+        const p1 = currentPoint;
+        const p2 = currentNode.virtualSource;
+        if ((p1[1] < 5.575 && p2[1] > 5.575) || (p1[1] > 5.575 && p2[1] < 5.575)) {
+          const t = (5.575 - p1[1]) / (p2[1] - p1[1]);
+          const xAtCross = p1[0] + t * (p2[0] - p1[0]);
+          const zAtCross = p1[2] + t * (p2[2] - p1[2]);
+          console.log(`    CROSSING y=5.575 at t=${t.toFixed(3)}, x=${xAtCross.toFixed(3)}, z=${zAtCross.toFixed(3)}`);
+          console.log(`    back1 spans: x=[6.215, 12.43], z=[0, 4.877]`);
+          if (xAtCross >= 6.215 && xAtCross <= 12.43 && zAtCross >= 0 && zAtCross <= 4.877) {
+            console.log(`    *** SHOULD HIT back1 (polygons 3, 4) ***`);
+
+            // Direct ray test against polygons 3 and 4
+            console.log(`    Direct polygon intersection test:`);
+            for (const polyId of [3, 4]) {
+              const poly = this.polygons[polyId];
+              const testHit = Polygon3D.rayIntersection(currentPoint, dir, poly);
+              if (testHit) {
+                console.log(`      Polygon ${polyId}: HIT at t=${testHit.t.toFixed(3)}, point=[${testHit.point[0].toFixed(3)}, ${testHit.point[1].toFixed(3)}, ${testHit.point[2].toFixed(3)}]`);
+              } else {
+                console.log(`      Polygon ${polyId}: NO HIT`);
+                // Debug: show polygon vertices
+                console.log(`        Vertices: ${poly.vertices.map(v => `[${v[0].toFixed(2)}, ${v[1].toFixed(2)}, ${v[2].toFixed(2)}]`).join(', ')}`);
+              }
+            }
+          }
+        }
+      }
+
       this.metrics.raycastCount++;
-      const finalHit = rayTraceBSP(
+      // Use the same ignoreIds set which contains all polygons in the reflection chain
+      const tMinVal = 1e-6;
+      const tMaxVal = dist - 1e-6;
+
+      const finalHit = rayTraceBSPMultiIgnore(
         currentPoint,
         dir,
         this.bspRoot,
-        1e-6,
-        dist - 1e-6,
-        prevPolyId
+        tMinVal,
+        tMaxVal,
+        ignoreIds
       );
 
       if (finalHit) {
-        // Final segment is blocked
+        if (debug) {
+          console.log(`    OCCLUDED by polygon ${finalHit.polygonId} at t=${finalHit.t.toFixed(3)}, point=[${finalHit.point[0].toFixed(3)}, ${finalHit.point[1].toFixed(3)}, ${finalHit.point[2].toFixed(3)}]`);
+        }
         return null;
+      }
+
+      if (debug) {
+        console.log(`    OK - path valid!`);
       }
 
       // Add source point
@@ -378,6 +466,51 @@ export class OptimizedSolver3D {
   }
 
   /**
+   * Debug a specific beam path by polygon IDs
+   * Logs detailed information about the path validation process
+   */
+  debugBeamPath(listenerPos: Vector3, polygonPath: number[]): void {
+    console.log('=== DEBUG BEAM PATH ===');
+    console.log(`Listener: [${listenerPos[0].toFixed(3)}, ${listenerPos[1].toFixed(3)}, ${listenerPos[2].toFixed(3)}]`);
+    console.log(`Polygon path: [${polygonPath.join(', ')}]`);
+    console.log(`Source: [${this.sourcePosition[0].toFixed(3)}, ${this.sourcePosition[1].toFixed(3)}, ${this.sourcePosition[2].toFixed(3)}]`);
+
+    // Find the beam node matching this polygon path
+    const findNode = (node: BeamNode3D, path: number[], depth: number): BeamNode3D | null => {
+      if (depth === path.length) {
+        return node;
+      }
+      for (const child of node.children) {
+        if (child.id === path[depth]) {
+          return findNode(child, path, depth + 1);
+        }
+      }
+      return null;
+    };
+
+    const targetNode = findNode(this.beamTree.root, polygonPath, 0);
+    if (!targetNode) {
+      console.log('ERROR: Could not find beam node for this polygon path');
+      return;
+    }
+
+    console.log(`Found beam node with virtual source: [${targetNode.virtualSource[0].toFixed(3)}, ${targetNode.virtualSource[1].toFixed(3)}, ${targetNode.virtualSource[2].toFixed(3)}]`);
+
+    // Run traverseBeam with debug enabled
+    const result = this.traverseBeam(listenerPos, targetNode, true);
+    if (result) {
+      console.log('PATH VALID - returned path:');
+      for (let i = 0; i < result.length; i++) {
+        const p = result[i];
+        console.log(`  [${i}] pos=[${p.position[0].toFixed(3)}, ${p.position[1].toFixed(3)}, ${p.position[2].toFixed(3)}], polygonId=${p.polygonId}`);
+      }
+    } else {
+      console.log('PATH INVALID');
+    }
+    console.log('=== END DEBUG ===');
+  }
+
+  /**
    * Clear all cached fail planes and skip spheres
    *
    * Call this if the room geometry changes.
@@ -418,24 +551,28 @@ export class OptimizedSolver3D {
     const beams: BeamVisualizationData[] = [];
     const effectiveMaxOrder = maxOrder ?? this.beamTree.maxReflectionOrder;
 
-    const traverse = (node: BeamNode3D, order: number) => {
+    const traverse = (node: BeamNode3D, order: number, pathSoFar: number[]) => {
       if (order > effectiveMaxOrder) return;
+
+      // Build the current path including this node's polygon
+      const currentPath = node.id !== -1 ? [...pathSoFar, node.id] : pathSoFar;
 
       if (node.id !== -1 && node.aperture) {
         beams.push({
           virtualSource: Vector3.clone(node.virtualSource),
           apertureVertices: node.aperture.vertices.map(v => Vector3.clone(v)),
           reflectionOrder: order,
-          polygonId: node.id
+          polygonId: node.id,
+          polygonPath: currentPath
         });
       }
 
       for (const child of node.children) {
-        traverse(child, order + 1);
+        traverse(child, order + 1, currentPath);
       }
     };
 
-    traverse(this.beamTree.root, 0);
+    traverse(this.beamTree.root, 0, []);
     return beams;
   }
 

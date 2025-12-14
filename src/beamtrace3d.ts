@@ -56,7 +56,7 @@ export {
 } from './geometry/clipping3d';
 
 // Structures
-export { buildBSP, rayTraceBSP, rayOccluded, rayTraceAll, countNodes, treeDepth } from './structures/bsp3d';
+export { buildBSP, rayTraceBSP, rayTraceBSPMultiIgnore, rayOccluded, rayTraceAll, countNodes, treeDepth, setBSPDebug } from './structures/bsp3d';
 export type { BSPNode3D, RayHit3D } from './structures/bsp3d';
 
 export {
@@ -230,6 +230,15 @@ export class Solver3D {
    */
   getBeamsForVisualization(maxOrder?: number): BeamVisualizationData[] {
     return this.solver.getBeamsForVisualization(maxOrder);
+  }
+
+  /**
+   * Debug a specific beam path by polygon IDs
+   * Logs detailed information about the path validation process
+   */
+  debugBeamPath(listener: Listener3D | Vector3, polygonPath: number[]): void {
+    const pos = Array.isArray(listener) ? listener : listener.position;
+    this.solver.debugBeamPath(pos, polygonPath);
   }
 }
 

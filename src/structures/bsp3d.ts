@@ -192,13 +192,52 @@ export function rayTraceBSP(
 
   let hit: RayHit3D | null = null;
 
+  // IMPORTANT: BSP pruning optimization assumes polygons are coplanar with splitting planes.
+  // Since our polygons are finite and may not align with their node's splitting plane,
+  // we must check BOTH subtrees in all cases to ensure correctness.
+
   if (tSplit === null || tSplit < tMin) {
-    // Ray parallel to plane or split point before ray start
-    // Ray stays entirely on near side
+    // Check near side first
     hit = rayTraceBSP(origin, direction, near, tMin, tMax, ignoreId);
+
+    // Check this node's polygon
+    if (!hit && node.polygonId !== ignoreId) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    }
+
+    // Also check far side
+    if (!hit) {
+      hit = rayTraceBSP(origin, direction, far, tMin, tMax, ignoreId);
+    }
   } else if (tSplit > tMax) {
-    // Split point beyond ray end - ray stays on near side
+    // Check near side first
     hit = rayTraceBSP(origin, direction, near, tMin, tMax, ignoreId);
+
+    // Check this node's polygon
+    if (!hit && node.polygonId !== ignoreId) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    }
+
+    // Also check far side
+    if (!hit) {
+      hit = rayTraceBSP(origin, direction, far, tMin, tMax, ignoreId);
+    }
   } else {
     // Ray crosses the plane - check near side first
     hit = rayTraceBSP(origin, direction, near, tMin, tSplit, ignoreId);
@@ -220,6 +259,184 @@ export function rayTraceBSP(
     if (!hit) {
       hit = rayTraceBSP(origin, direction, far, tSplit, tMax, ignoreId);
     }
+  }
+
+  return hit;
+}
+
+// Debug flag - set to true to trace BSP traversal
+let bspDebug = false;
+let bspDebugDepth = 0;
+
+export function setBSPDebug(enabled: boolean): void {
+  bspDebug = enabled;
+  bspDebugDepth = 0;
+}
+
+/**
+ * Trace a ray through the BSP tree, ignoring multiple polygon IDs
+ *
+ * @param origin - Ray origin point
+ * @param direction - Ray direction (should be normalized for t to be distance)
+ * @param node - BSP tree root node
+ * @param tMin - Minimum t value to consider
+ * @param tMax - Maximum t value to consider
+ * @param ignoreIds - Set of polygon IDs to ignore
+ * @returns First hit along the ray, or null if no hit
+ */
+export function rayTraceBSPMultiIgnore(
+  origin: Vector3,
+  direction: Vector3,
+  node: BSPNode3D | null,
+  tMin: number,
+  tMax: number,
+  ignoreIds: Set<number>
+): RayHit3D | null {
+  if (!node) return null;
+
+  const indent = '  '.repeat(bspDebugDepth);
+
+  const dOrigin = Plane3D.signedDistance(origin, node.plane);
+  const normal = Plane3D.normal(node.plane);
+  const dDir = Vector3.dot(normal, direction);
+
+  let near: BSPNode3D | null;
+  let far: BSPNode3D | null;
+
+  if (dOrigin >= 0) {
+    near = node.front;
+    far = node.back;
+  } else {
+    near = node.back;
+    far = node.front;
+  }
+
+  let tSplit: number | null = null;
+  if (Math.abs(dDir) > 1e-10) {
+    tSplit = -dOrigin / dDir;
+  }
+
+  if (bspDebug) {
+    console.log(`${indent}[BSP] Node ${node.polygonId}: dOrigin=${dOrigin.toFixed(3)}, dDir=${dDir.toFixed(3)}, tSplit=${tSplit?.toFixed(3) ?? 'null'}, tMin=${tMin.toFixed(3)}, tMax=${tMax.toFixed(3)}`);
+  }
+
+  let hit: RayHit3D | null = null;
+
+  // IMPORTANT: BSP pruning optimization assumes polygons are coplanar with splitting planes.
+  // Since our polygons are finite and may not align with their node's splitting plane,
+  // we must check BOTH subtrees in all cases to ensure correctness.
+  // The tSplit value still helps us order the traversal (near first for early termination).
+
+  if (tSplit === null || tSplit < tMin) {
+    if (bspDebug) {
+      console.log(`${indent}  Case: tSplit null or < tMin, checking near then far`);
+    }
+    // Check near side first
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tMax, ignoreIds);
+    bspDebugDepth--;
+
+    // Check this node's polygon
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : 'NO HIT'}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+
+    // Also check far side - polygons there might still intersect the ray
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tMin, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  } else if (tSplit > tMax) {
+    if (bspDebug) {
+      console.log(`${indent}  Case: tSplit > tMax, checking near then far`);
+    }
+    // Check near side first
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tMax, ignoreIds);
+    bspDebugDepth--;
+
+    // Check this node's polygon
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : 'NO HIT'}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+
+    // Also check far side - polygons there might still intersect the ray
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tMin, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  } else {
+    if (bspDebug) {
+      console.log(`${indent}  Case: ray crosses plane at tSplit=${tSplit.toFixed(3)}`);
+    }
+    // Ray crosses the plane - check near side first, then node, then far side
+    bspDebugDepth++;
+    hit = rayTraceBSPMultiIgnore(origin, direction, near, tMin, tSplit, ignoreIds);
+    bspDebugDepth--;
+
+    if (!hit && !ignoreIds.has(node.polygonId)) {
+      const polyHit = Polygon3D.rayIntersection(origin, direction, node.polygon);
+      if (bspDebug) {
+        console.log(`${indent}  Checking node polygon ${node.polygonId}: ${polyHit ? `HIT t=${polyHit.t.toFixed(3)}` : 'NO HIT'}`);
+        if (polyHit) {
+          console.log(`${indent}    In range [${tMin.toFixed(3)}, ${tMax.toFixed(3)}]? ${polyHit.t >= tMin && polyHit.t <= tMax}`);
+        }
+      }
+      if (polyHit && polyHit.t >= tMin && polyHit.t <= tMax) {
+        hit = {
+          t: polyHit.t,
+          point: polyHit.point,
+          polygonId: node.polygonId,
+          polygon: node.polygon
+        };
+      }
+    } else if (bspDebug && ignoreIds.has(node.polygonId)) {
+      console.log(`${indent}  Skipping node polygon ${node.polygonId} (in ignoreIds)`);
+    }
+
+    if (!hit) {
+      bspDebugDepth++;
+      hit = rayTraceBSPMultiIgnore(origin, direction, far, tSplit, tMax, ignoreIds);
+      bspDebugDepth--;
+    }
+  }
+
+  if (bspDebug && hit) {
+    console.log(`${indent}  RETURNING HIT: polygon ${hit.polygonId} at t=${hit.t.toFixed(3)}`);
   }
 
   return hit;

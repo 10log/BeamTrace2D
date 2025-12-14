@@ -121,7 +121,7 @@ for (const path of detailedPaths) {
 ```bash
 npm install    # Install dependencies
 npm run build  # Compile TypeScript and bundle for browser
-npm test       # Run Vitest tests (173 tests)
+npm test       # Run Vitest tests (239 tests)
 npm start      # Run dev server at http://localhost:3000
 ```
 
@@ -301,10 +301,11 @@ interface DetailedReflectionPath3D {
 | `getPaths(listener)` | `ReflectionPath3D[]` | Find all valid reflection paths to listener |
 | `getDetailedPaths(listener)` | `DetailedReflectionPath3D[]` | Find paths with full reflection details including angles |
 | `getMetrics()` | `PerformanceMetrics3D` | Get performance stats from last `getPaths()` call |
-| `getBeamsForVisualization(maxOrder?)` | `BeamVisualizationData[]` | Get beam cone geometry for rendering |
+| `getBeamsForVisualization(maxOrder?)` | `BeamVisualizationData[]` | Get virtual source data for rendering |
 | `getLeafNodeCount()` | `number` | Number of leaf nodes in beam tree |
 | `getMaxReflectionOrder()` | `number` | Configured maximum reflection order |
 | `clearCache()` | `void` | Clear fail plane and skip sphere caches |
+| `debugBeamPath(listener, polygonPath)` | `void` | Debug a specific beam path by polygon IDs (logs to console) |
 
 #### Performance Metrics
 
@@ -326,10 +327,9 @@ interface PerformanceMetrics3D {
 
 ```typescript
 interface BeamVisualizationData {
-  virtualSource: Vector3;       // Cone apex (mirrored source position)
-  apertureVertices: Vector3[];  // Vertices of the aperture polygon
+  virtualSource: Vector3;       // Virtual source position (mirrored source)
   reflectionOrder: number;      // 1 = first reflection, 2 = second, etc.
-  polygonId: number;            // ID of the reflecting polygon
+  polygonPath: number[];        // Sequence of polygon IDs for reflections
 }
 ```
 
@@ -340,6 +340,7 @@ interface BeamVisualizationData {
 - `computeArrivalTime(path, speedOfSound?)` - Arrival time in seconds
 - `getPathReflectionOrder(path)` - Number of reflections
 - `convertToDetailedPath3D(path, polygons)` - Convert a simple path to detailed path with reflection info
+- `setBSPDebug(enabled)` - Enable/disable detailed BSP traversal logging for debugging
 
 ## Demos
 
@@ -356,13 +357,15 @@ Open [http://localhost:3000/index3d.html](http://localhost:3000/index3d.html) - 
 **Controls:**
 - **Drag** source (red) or listener (blue) spheres to reposition
 - **Click** on the floor to move the listener
+- **Click** on a path or virtual source to select and highlight it (logs debug info to console)
 - **Drag** elsewhere to orbit the camera
 - **Scroll** to zoom in/out
 - **+/-** or arrow keys to change reflection order (0-6)
-- **B** to toggle between path rays and beam cones
+- **B** to toggle between path rays and virtual sources
+- **Room selector** to switch between Concord (L-shaped), Shoebox, and Auditorium rooms
 
 **Display:**
-- Paths/beams are color-coded by reflection order (green=direct, yellow/orange/pink/purple=reflections)
+- Paths/virtual sources are color-coded by reflection order (green=direct, yellow/orange/pink/purple=reflections)
 - Real-time performance metrics: path count, raycasts, cache hit rates
 - Timing breakdown: precompute, solve, and render times
 - Source/listener position controls with coordinate display
