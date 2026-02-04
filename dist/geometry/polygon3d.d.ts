@@ -58,7 +58,7 @@ export declare const Polygon3D: {
      * Ray-polygon intersection
      * Returns t parameter and intersection point, or null if no hit
      */
-    rayIntersection(rayOrigin: Vector3, rayDirection: Vector3, poly: Polygon3D): {
+    rayIntersection(rayOrigin: Vector3, rayDirection: Vector3, poly: Polygon3D, epsilon?: number): {
         t: number;
         point: Vector3;
     } | null;

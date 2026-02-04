@@ -23,7 +23,7 @@ import { Polygon3D } from './polygon3d';
 export function clipPolygonByPlane(
   poly: Polygon3D,
   plane: Plane3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): Polygon3D | null {
   const input = poly.vertices;
   const output: Vector3[] = [];
@@ -74,7 +74,7 @@ export function clipPolygonByPlane(
 export function clipPolygonByPlanes(
   poly: Polygon3D,
   planes: Plane3D[],
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): Polygon3D | null {
   let current: Polygon3D | null = poly;
 
@@ -100,7 +100,7 @@ export function clipPolygonByPlanes(
 export function quickRejectPolygon(
   poly: Polygon3D,
   planes: Plane3D[],
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): boolean {
   for (const plane of planes) {
     let allBehind = true;
@@ -130,7 +130,7 @@ export function quickRejectPolygon(
 export function polygonMayIntersectVolume(
   poly: Polygon3D,
   planes: Plane3D[],
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): boolean {
   // Polygon is definitely outside if all vertices are behind any single plane
   return !quickRejectPolygon(poly, planes, epsilon);
@@ -150,7 +150,7 @@ export function polygonMayIntersectVolume(
 export function clipPolygonByFrustum(
   poly: Polygon3D,
   frustumPlanes: Plane3D[],
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): Polygon3D | null {
   // Quick rejection first
   if (quickRejectPolygon(poly, frustumPlanes, epsilon)) {

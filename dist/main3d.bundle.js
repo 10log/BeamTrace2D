@@ -459,13 +459,13 @@ var Polygon3D = {
    * Ray-polygon intersection
    * Returns t parameter and intersection point, or null if no hit
    */
-  rayIntersection(rayOrigin, rayDirection, poly) {
+  rayIntersection(rayOrigin, rayDirection, poly, epsilon = 1e-4) {
     const t = Plane3D.rayIntersection(rayOrigin, rayDirection, poly.plane);
     if (t === null || t < 0) {
       return null;
     }
     const point = Vector3.add(rayOrigin, Vector3.scale(rayDirection, t));
-    if (!Polygon3D.containsPoint(poly, point)) {
+    if (!Polygon3D.containsPoint(poly, point, epsilon)) {
       return null;
     }
     return { t, point };
@@ -548,7 +548,7 @@ function createShoeboxRoom(width, depth, height, floorMaterial2, ceilingMaterial
 }
 
 // dist/geometry/polygon-split.js
-function splitPolygon(poly, plane, epsilon = 1e-6) {
+function splitPolygon(poly, plane, epsilon = 1e-4) {
   const classification = Polygon3D.classify(poly, plane, epsilon);
   if (classification === "front" || classification === "coplanar") {
     return { front: poly, back: null };
@@ -587,7 +587,7 @@ function splitPolygon(poly, plane, epsilon = 1e-6) {
 }
 
 // dist/geometry/clipping3d.js
-function clipPolygonByPlane(poly, plane, epsilon = 1e-6) {
+function clipPolygonByPlane(poly, plane, epsilon = 1e-4) {
   const input = poly.vertices;
   const output = [];
   if (input.length < 3)
@@ -612,7 +612,7 @@ function clipPolygonByPlane(poly, plane, epsilon = 1e-6) {
     return null;
   return Polygon3D.createWithPlane(output, poly.plane, poly.materialId);
 }
-function clipPolygonByPlanes(poly, planes, epsilon = 1e-6) {
+function clipPolygonByPlanes(poly, planes, epsilon = 1e-4) {
   let current = poly;
   for (const plane of planes) {
     if (!current)
@@ -621,7 +621,7 @@ function clipPolygonByPlanes(poly, planes, epsilon = 1e-6) {
   }
   return current;
 }
-function quickRejectPolygon(poly, planes, epsilon = 1e-6) {
+function quickRejectPolygon(poly, planes, epsilon = 1e-4) {
   for (const plane of planes) {
     let allBehind = true;
     for (const v of poly.vertices) {
@@ -1139,6 +1139,7 @@ var OptimizedSolver3D = class {
     const bucketSize = config.bucketSize ?? DEFAULT_BUCKET_SIZE_3D;
     this.polygons = polygons;
     this.sourcePosition = Vector3.clone(sourcePosition);
+    this.epsilon = config.epsilon ?? 1e-4;
     this.bspRoot = buildBSP(polygons);
     this.beamTree = buildBeamTree3D(sourcePosition, polygons, maxOrder);
     this.buckets = createBuckets3D(this.beamTree.leafNodes, bucketSize);
@@ -1228,7 +1229,7 @@ var OptimizedSolver3D = class {
     const dir = Vector3.normalize(direction);
     this.metrics.raycastCount++;
     const hit = rayTraceBSP(listenerPos2, dir, this.bspRoot, 0, dist, -1);
-    if (hit && hit.t < dist - 1e-6) {
+    if (hit && hit.t < dist - this.epsilon) {
       return null;
     }
     return [
@@ -1296,7 +1297,7 @@ var OptimizedSolver3D = class {
       }
       ignoreIds.add(currentNode.id);
       this.metrics.raycastCount++;
-      const occluder = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, 1e-6, hit.t - 1e-6, ignoreIds);
+      const occluder = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, this.epsilon, hit.t - this.epsilon, ignoreIds);
       if (occluder) {
         if (debug) {
           console.log(`    OCCLUDED by polygon ${occluder.polygonId} at t=${occluder.t.toFixed(3)}, point=[${occluder.point[0].toFixed(3)}, ${occluder.point[1].toFixed(3)}, ${occluder.point[2].toFixed(3)}]`);
@@ -1323,7 +1324,7 @@ var OptimizedSolver3D = class {
         console.log(`    To source: [${currentNode.virtualSource[0].toFixed(3)}, ${currentNode.virtualSource[1].toFixed(3)}, ${currentNode.virtualSource[2].toFixed(3)}]`);
         console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
         console.log(`    Distance: ${dist.toFixed(3)}`);
-        console.log(`    tMin: ${1e-6}, tMax: ${(dist - 1e-6).toFixed(6)}`);
+        console.log(`    tMin: ${this.epsilon}, tMax: ${(dist - this.epsilon).toFixed(6)}`);
         console.log(`    ignoreIds: [${Array.from(ignoreIds).join(", ")}]`);
         const p1 = currentPoint;
         const p2 = currentNode.virtualSource;
@@ -1350,8 +1351,8 @@ var OptimizedSolver3D = class {
         }
       }
       this.metrics.raycastCount++;
-      const tMinVal = 1e-6;
-      const tMaxVal = dist - 1e-6;
+      const tMinVal = this.epsilon;
+      const tMaxVal = dist - this.epsilon;
       const finalHit = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, tMinVal, tMaxVal, ignoreIds);
       if (finalHit) {
         if (debug) {

@@ -18,7 +18,7 @@ import { Polygon3D } from './polygon3d';
  * @param epsilon - Tolerance for point-on-plane classification
  * @returns The clipped polygon, or null if entirely clipped away
  */
-export function clipPolygonByPlane(poly, plane, epsilon = 1e-6) {
+export function clipPolygonByPlane(poly, plane, epsilon = 1e-4) {
     const input = poly.vertices;
     const output = [];
     if (input.length < 3)
@@ -58,7 +58,7 @@ export function clipPolygonByPlane(poly, plane, epsilon = 1e-6) {
  * @param epsilon - Tolerance for classification
  * @returns The clipped polygon, or null if entirely clipped away
  */
-export function clipPolygonByPlanes(poly, planes, epsilon = 1e-6) {
+export function clipPolygonByPlanes(poly, planes, epsilon = 1e-4) {
     let current = poly;
     for (const plane of planes) {
         if (!current)
@@ -78,7 +78,7 @@ export function clipPolygonByPlanes(poly, planes, epsilon = 1e-6) {
  * @param epsilon - Tolerance for classification
  * @returns true if polygon is entirely outside at least one plane
  */
-export function quickRejectPolygon(poly, planes, epsilon = 1e-6) {
+export function quickRejectPolygon(poly, planes, epsilon = 1e-4) {
     for (const plane of planes) {
         let allBehind = true;
         for (const v of poly.vertices) {
@@ -103,7 +103,7 @@ export function quickRejectPolygon(poly, planes, epsilon = 1e-6) {
  * @param planes - Array of planes defining the convex volume (normals point inward)
  * @param epsilon - Tolerance for classification
  */
-export function polygonMayIntersectVolume(poly, planes, epsilon = 1e-6) {
+export function polygonMayIntersectVolume(poly, planes, epsilon = 1e-4) {
     // Polygon is definitely outside if all vertices are behind any single plane
     return !quickRejectPolygon(poly, planes, epsilon);
 }
@@ -118,7 +118,7 @@ export function polygonMayIntersectVolume(poly, planes, epsilon = 1e-6) {
  * @param epsilon - Tolerance for classification
  * @returns The clipped polygon, or null if entirely outside the frustum
  */
-export function clipPolygonByFrustum(poly, frustumPlanes, epsilon = 1e-6) {
+export function clipPolygonByFrustum(poly, frustumPlanes, epsilon = 1e-4) {
     // Quick rejection first
     if (quickRejectPolygon(poly, frustumPlanes, epsilon)) {
         return null;

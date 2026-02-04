@@ -159,7 +159,8 @@ export const Polygon3D = {
   rayIntersection(
     rayOrigin: Vector3,
     rayDirection: Vector3,
-    poly: Polygon3D
+    poly: Polygon3D,
+    epsilon: number = 1e-4
   ): { t: number; point: Vector3 } | null {
     const t = Plane3D.rayIntersection(rayOrigin, rayDirection, poly.plane);
 
@@ -169,7 +170,8 @@ export const Polygon3D = {
 
     const point = Vector3.add(rayOrigin, Vector3.scale(rayDirection, t));
 
-    if (!Polygon3D.containsPoint(poly, point)) {
+    // Use larger epsilon for point-in-polygon test to handle edge/corner cases
+    if (!Polygon3D.containsPoint(poly, point, epsilon)) {
       return null;
     }
 

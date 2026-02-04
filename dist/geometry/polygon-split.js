@@ -16,7 +16,7 @@ import { Polygon3D } from './polygon3d';
  * @param plane - The splitting plane
  * @param epsilon - Tolerance for point-on-plane classification
  */
-export function splitPolygon(poly, plane, epsilon = 1e-6) {
+export function splitPolygon(poly, plane, epsilon = 1e-4) {
     const classification = Polygon3D.classify(poly, plane, epsilon);
     // Fast path: polygon entirely on one side
     if (classification === 'front' || classification === 'coplanar') {
@@ -73,7 +73,7 @@ export function splitPolygon(poly, plane, epsilon = 1e-6) {
  * Useful for BSP tree construction where multiple polygons need to be
  * partitioned by the same splitting plane.
  */
-export function splitPolygons(polygons, plane, epsilon = 1e-6) {
+export function splitPolygons(polygons, plane, epsilon = 1e-4) {
     const front = [];
     const back = [];
     const coplanar = [];

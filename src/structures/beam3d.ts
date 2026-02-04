@@ -103,7 +103,7 @@ export function createBeam3D(
 export function isPointInBeam(
   point: Vector3,
   beam: Beam3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): boolean {
   for (const plane of beam.boundaryPlanes) {
     if (Plane3D.signedDistance(point, plane) < -epsilon) {
@@ -127,7 +127,7 @@ export function isPointInBeam(
 export function findBeamViolation(
   point: Vector3,
   beam: Beam3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): BeamViolation | null {
   const edgeCount = beam.boundaryPlanes.length - 1;
 
@@ -185,7 +185,7 @@ export function mirrorPointAcrossPolygon(
 export function polygonMayBeInBeam(
   polygon: Polygon3D,
   beam: Beam3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): boolean {
   for (const plane of beam.boundaryPlanes) {
     let allBehind = true;

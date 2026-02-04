@@ -30,6 +30,7 @@ export interface PerformanceMetrics3D {
 export interface OptimizedSolver3DConfig {
     maxReflectionOrder?: number;
     bucketSize?: number;
+    epsilon?: number;
 }
 /**
  * Data for visualizing a single beam cone
@@ -56,6 +57,7 @@ export declare class OptimizedSolver3D {
     private readonly bspRoot;
     private readonly beamTree;
     private readonly buckets;
+    private readonly epsilon;
     private metrics;
     /**
      * Create a new 3D beam tracing solver

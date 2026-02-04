@@ -36,6 +36,7 @@ export class OptimizedSolver3D {
         const bucketSize = config.bucketSize ?? DEFAULT_BUCKET_SIZE_3D;
         this.polygons = polygons;
         this.sourcePosition = Vector3.clone(sourcePosition);
+        this.epsilon = config.epsilon ?? 1e-4;
         // Build BSP tree for ray tracing
         this.bspRoot = buildBSP(polygons);
         // Build beam tree for reflection enumeration
@@ -140,7 +141,7 @@ export class OptimizedSolver3D {
         this.metrics.raycastCount++;
         const hit = rayTraceBSP(listenerPos, dir, this.bspRoot, 0, dist, -1);
         // If something blocks the path before reaching source, no direct path
-        if (hit && hit.t < dist - 1e-6) {
+        if (hit && hit.t < dist - this.epsilon) {
             return null;
         }
         return [
@@ -221,7 +222,7 @@ export class OptimizedSolver3D {
             // - The polygon we're reflecting to (currentNode.id) since it's at the endpoint
             ignoreIds.add(currentNode.id);
             this.metrics.raycastCount++;
-            const occluder = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, 1e-6, hit.t - 1e-6, ignoreIds);
+            const occluder = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, this.epsilon, hit.t - this.epsilon, ignoreIds);
             if (occluder) {
                 if (debug) {
                     console.log(`    OCCLUDED by polygon ${occluder.polygonId} at t=${occluder.t.toFixed(3)}, point=[${occluder.point[0].toFixed(3)}, ${occluder.point[1].toFixed(3)}, ${occluder.point[2].toFixed(3)}]`);
@@ -252,7 +253,7 @@ export class OptimizedSolver3D {
                 console.log(`    To source: [${currentNode.virtualSource[0].toFixed(3)}, ${currentNode.virtualSource[1].toFixed(3)}, ${currentNode.virtualSource[2].toFixed(3)}]`);
                 console.log(`    Direction: [${dir[0].toFixed(3)}, ${dir[1].toFixed(3)}, ${dir[2].toFixed(3)}]`);
                 console.log(`    Distance: ${dist.toFixed(3)}`);
-                console.log(`    tMin: ${1e-6}, tMax: ${(dist - 1e-6).toFixed(6)}`);
+                console.log(`    tMin: ${this.epsilon}, tMax: ${(dist - this.epsilon).toFixed(6)}`);
                 console.log(`    ignoreIds: [${Array.from(ignoreIds).join(', ')}]`);
                 // Check intersection with back1 (inner wall at y=5.575)
                 // If segment crosses y=5.575, calculate where
@@ -285,8 +286,8 @@ export class OptimizedSolver3D {
             }
             this.metrics.raycastCount++;
             // Use the same ignoreIds set which contains all polygons in the reflection chain
-            const tMinVal = 1e-6;
-            const tMaxVal = dist - 1e-6;
+            const tMinVal = this.epsilon;
+            const tMaxVal = dist - this.epsilon;
             const finalHit = rayTraceBSPMultiIgnore(currentPoint, dir, this.bspRoot, tMinVal, tMaxVal, ignoreIds);
             if (finalHit) {
                 if (debug) {

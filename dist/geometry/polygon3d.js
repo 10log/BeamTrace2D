@@ -127,13 +127,14 @@ export const Polygon3D = {
      * Ray-polygon intersection
      * Returns t parameter and intersection point, or null if no hit
      */
-    rayIntersection(rayOrigin, rayDirection, poly) {
+    rayIntersection(rayOrigin, rayDirection, poly, epsilon = 1e-4) {
         const t = Plane3D.rayIntersection(rayOrigin, rayDirection, poly.plane);
         if (t === null || t < 0) {
             return null;
         }
         const point = Vector3.add(rayOrigin, Vector3.scale(rayDirection, t));
-        if (!Polygon3D.containsPoint(poly, point)) {
+        // Use larger epsilon for point-in-polygon test to handle edge/corner cases
+        if (!Polygon3D.containsPoint(poly, point, epsilon)) {
             return null;
         }
         return { t, point };

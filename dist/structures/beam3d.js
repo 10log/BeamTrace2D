@@ -65,7 +65,7 @@ export function createBeam3D(virtualSource, aperture, reflectingPolygonId) {
  * @param beam - The beam to test against
  * @param epsilon - Tolerance for boundary tests
  */
-export function isPointInBeam(point, beam, epsilon = 1e-6) {
+export function isPointInBeam(point, beam, epsilon = 1e-4) {
     for (const plane of beam.boundaryPlanes) {
         if (Plane3D.signedDistance(point, plane) < -epsilon) {
             return false;
@@ -84,7 +84,7 @@ export function isPointInBeam(point, beam, epsilon = 1e-6) {
  * @param beam - The beam to test against
  * @param epsilon - Tolerance for boundary tests
  */
-export function findBeamViolation(point, beam, epsilon = 1e-6) {
+export function findBeamViolation(point, beam, epsilon = 1e-4) {
     const edgeCount = beam.boundaryPlanes.length - 1;
     for (let i = 0; i < beam.boundaryPlanes.length; i++) {
         const plane = beam.boundaryPlanes[i];
@@ -125,7 +125,7 @@ export function mirrorPointAcrossPolygon(point, polygon) {
  * @param beam - The beam to test against
  * @param epsilon - Tolerance
  */
-export function polygonMayBeInBeam(polygon, beam, epsilon = 1e-6) {
+export function polygonMayBeInBeam(polygon, beam, epsilon = 1e-4) {
     for (const plane of beam.boundaryPlanes) {
         let allBehind = true;
         for (const v of polygon.vertices) {

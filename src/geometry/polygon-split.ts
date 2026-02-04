@@ -26,7 +26,7 @@ export interface SplitResult {
 export function splitPolygon(
   poly: Polygon3D,
   plane: Plane3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): SplitResult {
   const classification = Polygon3D.classify(poly, plane, epsilon);
 
@@ -96,7 +96,7 @@ export function splitPolygon(
 export function splitPolygons(
   polygons: Polygon3D[],
   plane: Plane3D,
-  epsilon: number = 1e-6
+  epsilon: number = 1e-4
 ): { front: Polygon3D[]; back: Polygon3D[]; coplanar: Polygon3D[] } {
   const front: Polygon3D[] = [];
   const back: Polygon3D[] = [];
